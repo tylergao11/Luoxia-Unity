@@ -7,6 +7,12 @@ Luoxia 2D client (Unity 2022.3 LTS + URP). Server authority lives in **Luoxia-En
 - Unity Editor **2022.3.62f3c1** (see Deployment)
 - Required: Engine at `http://127.0.0.1:8000` + Deployment provision at `:8010`
 
+## Accept gate (demo)
+
+- **Play Accept 放行线 = guyandu only**（Deployment `.env.local` 显式锁 `jianghu.guyandu` / `guyandu`）。
+- `luoxia.riverside` 是对照包、未齐 hash 美术；其已知红（缺图等）**不作为** Accept 放行依据，也不在 Host 里按 `pack_id` 分支或做缺图兜底。
+- riverside 转正条件：补齐 hash 美术后，用与 guyandu **同一套** Accept；转正前演示部署仍只锁 guyandu。
+
 ## Deployment
 
 Unity Host editor and package versions are locked here as deployment config. There is no CI version gate.
