@@ -317,10 +317,19 @@ namespace Luoxia.App
                 sendClientReadyOnStart = true;
                 _terminalToProvisionOnly = false;
 
+                var rebuildOk = false;
                 yield return RebuildSessionConnection(
                     seedFromInitialEnvelopes: true,
-                    preferResyncWhenBasisPresent: false);
+                    preferResyncWhenBasisPresent: false,
+                    completed: ok => { rebuildOk = ok; });
 
+                if (!rebuildOk)
+                {
+                    yield break;
+                }
+
+                // New session is synchronized; clear the in-flight / prior fatal overlay.
+                mainWorldScreen?.HideFatal();
                 Debug.Log(
                     "[Bootstrap] in-Play reprovision ok session=" + sessionId + " world=" + worldId);
             }
@@ -352,11 +361,17 @@ namespace Luoxia.App
             _reconnectInFlight = true;
             try
             {
+                var rebuildOk = false;
                 yield return RebuildSessionConnection(
                     seedFromInitialEnvelopes: mode == SessionSourceMode.EngineWithInitialView,
-                    preferResyncWhenBasisPresent: true);
+                    preferResyncWhenBasisPresent: true,
+                    completed: ok => { rebuildOk = ok; });
 
-                Debug.Log("[Bootstrap] recoverability=reconnect completed");
+                if (rebuildOk)
+                {
+                    mainWorldScreen?.HideFatal();
+                    Debug.Log("[Bootstrap] recoverability=reconnect completed");
+                }
             }
             finally
             {
@@ -367,10 +382,12 @@ namespace Luoxia.App
         /// <summary>
         /// Shared Host rebuild for recoverability=reconnect and in-Play reprovision:
         /// new transport + bridge (+ new replica/gate for brand-new session), seed, ready/resync.
+        /// Invokes <paramref name="completed"/> with success/failure before every exit.
         /// </summary>
         private IEnumerator RebuildSessionConnection(
             bool seedFromInitialEnvelopes,
-            bool preferResyncWhenBasisPresent)
+            bool preferResyncWhenBasisPresent,
+            System.Action<bool> completed)
         {
             UnwireBridgeEvents();
             _bridge?.DetachPresentation();
@@ -411,6 +428,7 @@ namespace Luoxia.App
                     "初始 SessionView 无效",
                     "provision 返回的 server_envelopes 无法解析为 session.view。",
                     terminalToProvision: true);
+                completed(false);
                 yield break;
             }
 
@@ -446,6 +464,7 @@ namespace Luoxia.App
                         terminalToProvision: true);
                 }
 
+                completed(false);
                 yield break;
             }
 
@@ -453,6 +472,8 @@ namespace Luoxia.App
             {
                 Debug.Log($"[Bootstrap] rebuild ready/resync ok view_revision={task.Result.view_revision}");
             }
+
+            completed(true);
         }
 
         private IEnumerator RetryReadyOrResync()

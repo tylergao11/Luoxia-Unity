@@ -154,6 +154,15 @@ namespace Luoxia.UI.Screens
             fatalOverlay.Show(title, detail, allowSessionRetry: !terminalToProvision);
         }
 
+        /// <summary>
+        /// Hide/reset SessionFatalOverlay after a successful reconnect or in-Play reprovision
+        /// has synchronized a playable session.
+        /// </summary>
+        public void HideFatal()
+        {
+            fatalOverlay?.Hide();
+        }
+
         protected override void OnBound()
         {
             if (dialogueTabButton != null)

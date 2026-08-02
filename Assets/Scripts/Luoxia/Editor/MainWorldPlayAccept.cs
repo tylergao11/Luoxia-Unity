@@ -1,12 +1,11 @@
 #if UNITY_EDITOR
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
 using Luoxia.App;
-using Newtonsoft.Json.Linq;
+using Luoxia.Net;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -18,6 +17,7 @@ namespace Luoxia.Editor
     /// <summary>
     /// Editor launcher: Provision → inject LuoxiaClientBootstrap → marker → Play →
     /// wait for <see cref="PlayAcceptRuntimeDriver"/> report → Exit.
+    /// Provision HTTP + parse owned by runtime <see cref="ProvisionGatewayClient"/>.
     /// </summary>
     public static class MainWorldPlayAccept
     {
@@ -30,9 +30,6 @@ namespace Luoxia.Editor
         private const string SessionKeyStartedUtc = "Luoxia.PlayAccept.StartedUtc";
         // Day1 budget drain (capacity+2 probes) + day2 dialogue needs headroom beyond 15m.
         private const double MaxWaitSeconds = 2400d;
-        private const string DefaultEngineBaseUrl = "http://127.0.0.1:8000";
-        private const string DefaultPlayerLocale = "zh-CN";
-        private const string DefaultPlayerName = "试玩者";
 
         [InitializeOnLoadMethod]
         private static void ResumeAfterReload()
@@ -75,48 +72,15 @@ namespace Luoxia.Editor
             Directory.CreateDirectory(artifactDir);
             ClearArtifactOutputs(artifactDir);
 
-            var envPath = ResolveDeploymentEnvPath();
-            if (string.IsNullOrWhiteSpace(envPath) || !File.Exists(envPath))
+            if (!ProvisionGatewayClient.TryLoadLocalSettings(out var settings, out var loadError))
             {
-                Fail("missing Luoxia-Deployment/.env.local", interactive, artifactDir);
+                Fail(loadError ?? "missing Luoxia-Deployment/.env.local", interactive, artifactDir);
                 return;
             }
 
-            Dictionary<string, string> env;
-            try
-            {
-                env = ParseEnvFile(envPath);
-            }
-            catch (Exception ex)
-            {
-                Fail("failed to parse .env.local: " + ex.Message, interactive, artifactDir);
-                return;
-            }
-
-            if (!env.TryGetValue("LUOXIA_PROVISION_PORT", out var portText) ||
-                !int.TryParse(portText, out var provisionPort) ||
-                provisionPort is < 1 or > 65535)
-            {
-                Fail("missing/invalid LUOXIA_PROVISION_PORT", interactive, artifactDir);
-                return;
-            }
-
-            if (!env.TryGetValue("LUOXIA_PROVISION_SHARED_SECRET", out var secret) ||
-                string.IsNullOrWhiteSpace(secret))
-            {
-                Fail("missing LUOXIA_PROVISION_SHARED_SECRET", interactive, artifactDir);
-                return;
-            }
-
-            var engineBase = env.TryGetValue("LUOXIA_ENGINE_BASE_URL", out var ebu) && !string.IsNullOrWhiteSpace(ebu)
-                ? ebu.TrimEnd('/')
-                : DefaultEngineBaseUrl;
-            var playerName = env.TryGetValue("LUOXIA_PLAYER_DISPLAY_NAME", out var pn) && !string.IsNullOrWhiteSpace(pn)
-                ? pn.Trim()
-                : DefaultPlayerName;
-            var locale = env.TryGetValue("LUOXIA_PLAYER_LOCALE", out var loc) && !string.IsNullOrWhiteSpace(loc)
-                ? loc.Trim()
-                : DefaultPlayerLocale;
+            var engineBase = settings.EngineBaseUrl;
+            var locale = settings.PlayerLocale;
+            var playerName = settings.PlayerName;
 
             if (!File.Exists(ScenePath))
             {
@@ -140,30 +104,44 @@ namespace Luoxia.Editor
                 return;
             }
 
-            Debug.Log("[PlayAccept] provisioning via http://127.0.0.1:" + provisionPort + "/provision/new-play");
-            ProvisionResult provision;
-            try
+            Debug.Log(
+                "[PlayAccept] provisioning via http://127.0.0.1:" + settings.Port + "/provision/new-play");
+            var outcome = await ProvisionGatewayClient.ProvisionNewPlayAsync(settings, locale, playerName)
+                .ConfigureAwait(true);
+            if (!outcome.Ok)
             {
-                provision = await ProvisionNewPlayAsync(provisionPort, secret, locale, playerName)
-                    .ConfigureAwait(true);
-            }
-            catch (ProvisionAmbiguousException ambiguous)
-            {
-                FailAmbiguous(ambiguous.Fault, interactive, artifactDir);
-                return;
-            }
-            catch (Exception ex)
-            {
-                if (ProvisionFaultPresentation.TryParseFaultBody(ex.Message, out var fault)
-                    && ProvisionFaultPresentation.IsModelDispatchAmbiguous(fault.Code))
+                if (outcome.IsAmbiguous
+                    || ProvisionFaultPresentation.IsModelDispatchAmbiguous(outcome.Code)
+                    || ProvisionFaultPresentation.IsModelDispatchAmbiguous(outcome.RawBody)
+                    || ProvisionFaultPresentation.IsModelDispatchAmbiguous(outcome.Message))
                 {
-                    FailAmbiguous(fault, interactive, artifactDir);
+                    if (ProvisionFaultPresentation.TryParseFaultBody(
+                            outcome.RawBody ?? outcome.Message,
+                            out var fault))
+                    {
+                        FailAmbiguous(fault, interactive, artifactDir);
+                    }
+                    else
+                    {
+                        FailAmbiguous(
+                            new ProvisionFaultPresentation.ProvisionFault(
+                                ProvisionFaultPresentation.ModelDispatchAmbiguousCode,
+                                outcome.Message,
+                                null,
+                                null,
+                                outcome.RawBody ?? outcome.Message),
+                            interactive,
+                            artifactDir);
+                    }
+
                     return;
                 }
 
-                Fail("provision failed: " + ex.Message, interactive, artifactDir);
+                Fail("provision failed: " + outcome.FormatDetail(), interactive, artifactDir);
                 return;
             }
+
+            var provision = outcome.Success;
 
             if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
             {
@@ -291,69 +269,6 @@ namespace Luoxia.Editor
             }
         }
 
-        private static async Task<ProvisionResult> ProvisionNewPlayAsync(
-            int port,
-            string secret,
-            string locale,
-            string playerName)
-        {
-            var url = "http://127.0.0.1:" + port + "/provision/new-play";
-            var body = "{\"locale\":" + JsonString(locale) + ",\"text\":" + JsonString(playerName) + "}";
-            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(600) };
-            using var request = new HttpRequestMessage(HttpMethod.Post, url);
-            request.Headers.TryAddWithoutValidation("x-luoxia-provision-secret", secret);
-            request.Content = new StringContent(body, Encoding.UTF8, "application/json");
-            using var response = await client.SendAsync(request).ConfigureAwait(true);
-            var text = await response.Content.ReadAsStringAsync().ConfigureAwait(true);
-            if (!response.IsSuccessStatusCode)
-            {
-                if (ProvisionFaultPresentation.TryParseFaultBody(text, out var fault)
-                    && ProvisionFaultPresentation.IsModelDispatchAmbiguous(fault.Code))
-                {
-                    throw new ProvisionAmbiguousException(fault);
-                }
-
-                if (ProvisionFaultPresentation.IsModelDispatchAmbiguous(text))
-                {
-                    throw new ProvisionAmbiguousException(
-                        new ProvisionFaultPresentation.ProvisionFault(
-                            ProvisionFaultPresentation.ModelDispatchAmbiguousCode,
-                            null,
-                            null,
-                            null,
-                            text));
-                }
-
-                throw new InvalidOperationException("HTTP " + (int)response.StatusCode + " " + text);
-            }
-
-            var root = JObject.Parse(text);
-            var sessionId = root.Value<string>("session_id");
-            var worldId = root.Value<string>("world_id");
-            var envelopes = root["server_envelopes"] as JArray;
-            if (string.IsNullOrWhiteSpace(sessionId) ||
-                string.IsNullOrWhiteSpace(worldId) ||
-                envelopes == null ||
-                envelopes.Count < 1)
-            {
-                if (ProvisionFaultPresentation.TryParseFaultBody(text, out var fault)
-                    && ProvisionFaultPresentation.IsModelDispatchAmbiguous(fault.Code))
-                {
-                    throw new ProvisionAmbiguousException(fault);
-                }
-
-                throw new InvalidOperationException("provision response missing session/world/envelopes");
-            }
-
-            return new ProvisionResult(
-                sessionId,
-                worldId,
-                envelopes.ToString(Newtonsoft.Json.Formatting.None));
-        }
-
-        private static string JsonString(string value) =>
-            "\"" + (value ?? string.Empty).Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
-
         private static void Assign(UnityEngine.Object target, string fieldName, object value)
         {
             var so = new SerializedObject(target);
@@ -383,56 +298,6 @@ namespace Luoxia.Editor
             }
 
             so.ApplyModifiedPropertiesWithoutUndo();
-        }
-
-        private static string ResolveDeploymentEnvPath()
-        {
-            var projectRoot = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
-            var candidates = new[]
-            {
-                Path.GetFullPath(Path.Combine(projectRoot, "..", "Luoxia-Deployment", ".env.local")),
-                @"C:\Ai\Luoxia-Deployment\.env.local",
-            };
-            foreach (var candidate in candidates)
-            {
-                if (File.Exists(candidate))
-                {
-                    return candidate;
-                }
-            }
-
-            return null;
-        }
-
-        private static Dictionary<string, string> ParseEnvFile(string path)
-        {
-            var map = new Dictionary<string, string>(StringComparer.Ordinal);
-            foreach (var raw in File.ReadAllLines(path, Encoding.UTF8))
-            {
-                var line = raw.Trim();
-                if (line.Length == 0 || line.StartsWith("#", StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
-                var idx = line.IndexOf('=');
-                if (idx <= 0)
-                {
-                    continue;
-                }
-
-                var key = line.Substring(0, idx).Trim();
-                var value = line.Substring(idx + 1).Trim();
-                if ((value.StartsWith("\"", StringComparison.Ordinal) && value.EndsWith("\"", StringComparison.Ordinal)) ||
-                    (value.StartsWith("'", StringComparison.Ordinal) && value.EndsWith("'", StringComparison.Ordinal)))
-                {
-                    value = value.Substring(1, value.Length - 2);
-                }
-
-                map[key] = value;
-            }
-
-            return map;
         }
 
         private static void Fail(string reason, bool interactive, string artifactDir)
@@ -485,31 +350,6 @@ namespace Luoxia.Editor
                 reportBody,
                 new UTF8Encoding(false));
             File.WriteAllText(Path.Combine(artifactDir, ExitCodeFileName), "1\n", new UTF8Encoding(false));
-        }
-
-        private sealed class ProvisionAmbiguousException : Exception
-        {
-            public ProvisionAmbiguousException(ProvisionFaultPresentation.ProvisionFault fault)
-                : base(ProvisionFaultPresentation.PlayerCopy)
-            {
-                Fault = fault;
-            }
-
-            public ProvisionFaultPresentation.ProvisionFault Fault { get; }
-        }
-
-        private readonly struct ProvisionResult
-        {
-            public ProvisionResult(string sessionId, string worldId, string serverEnvelopesJson)
-            {
-                SessionId = sessionId;
-                WorldId = worldId;
-                ServerEnvelopesJson = serverEnvelopesJson;
-            }
-
-            public string SessionId { get; }
-            public string WorldId { get; }
-            public string ServerEnvelopesJson { get; }
         }
     }
 }
