@@ -4,8 +4,16 @@ Luoxia 2D client (Unity 2022.3 LTS + URP). Server authority lives in **Luoxia-En
 
 ## Requirements
 
-- Unity **2022.3.62f3** (or compatible 2022.3 LTS)
+- Unity Editor **2022.3.62f3c1** (see Deployment)
 - Required: Engine at `http://127.0.0.1:8000` + Deployment provision at `:8010`
+
+## Deployment
+
+Unity Host editor and package versions are locked here as deployment config. There is no CI version gate.
+
+- Editor: `2022.3.62f3c1` — must match `ProjectSettings/ProjectVersion.txt`
+- Packages: `Packages/manifest.json` is the package lock
+- Version changes only via explicit edit of that deployment config in this Host project
 
 ## Open
 
