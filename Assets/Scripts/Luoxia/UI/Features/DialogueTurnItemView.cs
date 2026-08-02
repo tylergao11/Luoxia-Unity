@@ -51,10 +51,7 @@ namespace Luoxia.UI.Features
                     playerBodyText.text = body;
                 }
 
-                if (playerPortrait != null)
-                {
-                    playerPortrait.sprite = model.Portrait;
-                }
+                ApplyPortraitOrKeepChrome(playerPortrait, model.Portrait);
             }
             else
             {
@@ -68,11 +65,24 @@ namespace Luoxia.UI.Features
                     otherBodyText.text = body;
                 }
 
-                if (otherPortrait != null)
-                {
-                    otherPortrait.sprite = model.Portrait;
-                }
+                ApplyPortraitOrKeepChrome(otherPortrait, model.Portrait);
             }
+        }
+
+        private static void ApplyPortraitOrKeepChrome(Image image, Sprite portrait)
+        {
+            if (image == null)
+            {
+                return;
+            }
+
+            if (portrait != null)
+            {
+                image.sprite = portrait;
+                image.color = Color.white;
+                image.enabled = true;
+            }
+            // No portrait: keep frame chrome already on the Image — do not assign null.
         }
     }
 }

@@ -1,3 +1,11 @@
+# Local accept evidence (not source)
+Artifacts/
+_accept_*.log
+_play_accept.log
+_ui_accept.log
+_build_*.log
+.luoxia-*-request
+
 # Unity generated
 [Ll]ibrary/
 [Tt]emp/

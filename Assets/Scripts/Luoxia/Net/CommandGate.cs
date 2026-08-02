@@ -12,6 +12,7 @@ namespace Luoxia.Net
         public string PendingCommandId => _pendingCommandId;
         public string PendingEnvelopeJson => _pendingEnvelopeJson;
 
+        public event Action PendingChanged;
         public event Action<string> CommandCompleted;
         public event Action<string, string> CommandFailed;
 
@@ -30,6 +31,7 @@ namespace Luoxia.Net
 
             _pendingCommandId = commandId;
             _pendingEnvelopeJson = originalEnvelopeJson;
+            PendingChanged?.Invoke();
             return true;
         }
 
@@ -42,6 +44,7 @@ namespace Luoxia.Net
 
             _pendingCommandId = null;
             _pendingEnvelopeJson = null;
+            PendingChanged?.Invoke();
             CommandCompleted?.Invoke(commandId);
         }
 
@@ -54,6 +57,7 @@ namespace Luoxia.Net
 
             _pendingCommandId = null;
             _pendingEnvelopeJson = null;
+            PendingChanged?.Invoke();
             CommandFailed?.Invoke(commandId, reason ?? "failed");
         }
 

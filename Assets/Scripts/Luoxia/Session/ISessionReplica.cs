@@ -28,8 +28,16 @@ namespace Luoxia.Session
 
         void Bootstrap(SessionViewDto initialView, int initialServerSequence);
         void ApplyFullView(SessionViewDto view, int serverSequence);
+        /// <summary>
+        /// Advance the server sequence cursor for non-view envelopes
+        /// (dialogue.reply, command.result, stage.*, …). Engine sequences every envelope.
+        /// Returns false when Fatal, Resynchronizing, or a gap was detected (caller must not dispatch).
+        /// </summary>
+        bool AcknowledgeServerSequence(int serverSequence);
+        void ApplyDialogueReply(DialogueReplyDto reply);
         void EnterResynchronizing();
         void MarkFatal(string reason);
+        void ClearFatalForRetry();
     }
 
     /// <summary>

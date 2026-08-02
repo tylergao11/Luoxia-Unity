@@ -1,11 +1,18 @@
 using System;
+using Luoxia.Contracts;
 using Newtonsoft.Json.Linq;
 
 namespace Luoxia.Net
 {
+    /// <summary>
+    /// Builds contract-valid ClientEnvelope payloads. Owns the sole client sequence counter
+    /// shared by BridgeSessionClient and PlayerIntentRouter.
+    /// </summary>
     public sealed class ClientEnvelopeFactory : IClientEnvelopeFactory
     {
         private const string Protocol = "client-bridge.v1";
+        public const string DefaultInteractionKind = "dialogue";
+
         private int _nextSequence;
 
         public ClientEnvelopeFactory(int startingSequence = 0)
@@ -17,32 +24,32 @@ namespace Luoxia.Net
 
         public void SetNextSequence(int sequence) => _nextSequence = Math.Max(0, sequence);
 
-        public string CreateReady(string sessionId, int sequence, string clientBuildDigest)
-        {
-            return Build(sessionId, sequence, null, new JObject
+        /// <summary>Single source of client sequence for Bridge + IntentRouter.</summary>
+        public int AllocateSequence() => _nextSequence++;
+
+        public string CreateReady(string sessionId, string clientBuildDigest) =>
+            Build(sessionId, AllocateSequence(), null, new JObject
             {
                 ["type"] = "client.ready",
                 ["client_build_digest"] = clientBuildDigest,
                 ["supported_protocols"] = new JArray { Protocol }
             });
-        }
 
-        public string CreateResync(string sessionId, int sequence, string basisToken)
-        {
-            return Build(sessionId, sequence, null, new JObject
+        public string CreateResync(string sessionId, string basisToken) =>
+            Build(sessionId, AllocateSequence(), null, new JObject
             {
                 ["type"] = "session.resync_request",
                 ["basis_token"] = basisToken
             });
-        }
 
         public string CreateDialogueStart(
             string sessionId,
-            int sequence,
             string commandId,
             string basisToken,
+            string worldId,
             string recipientEntityIdOrSystem,
-            string text)
+            string text,
+            string interactionKind = DefaultInteractionKind)
         {
             JObject recipient;
             if (string.IsNullOrEmpty(recipientEntityIdOrSystem) ||
@@ -52,51 +59,62 @@ namespace Luoxia.Net
             }
             else
             {
+                if (string.IsNullOrEmpty(worldId))
+                {
+                    throw new ArgumentException("worldId required for entity recipient", nameof(worldId));
+                }
+
+                // DialogueParticipantRef entity branch: { participant_kind, entity: EntityRef }
                 recipient = new JObject
                 {
                     ["participant_kind"] = "entity",
-                    ["entity_id"] = recipientEntityIdOrSystem
+                    ["entity"] = new JObject
+                    {
+                        ["world_id"] = worldId,
+                        ["entity_id"] = recipientEntityIdOrSystem
+                    }
                 };
             }
 
-            return Build(sessionId, sequence, null, new JObject
+            return Build(sessionId, AllocateSequence(), null, new JObject
             {
                 ["type"] = "dialogue.start",
                 ["command_id"] = commandId,
                 ["basis_token"] = basisToken,
                 ["recipient"] = recipient,
-                ["locale"] = "zh-CN",
+                ["interaction_kind"] = NormalizeInteractionKind(interactionKind),
+                ["locale"] = RequireHostLocale(),
                 ["text"] = text
             });
         }
 
         public string CreateDialogueContinue(
             string sessionId,
-            int sequence,
             string commandId,
             string basisToken,
             string dialogueId,
-            string text)
+            string text,
+            string interactionKind = DefaultInteractionKind)
         {
-            return Build(sessionId, sequence, null, new JObject
+            return Build(sessionId, AllocateSequence(), null, new JObject
             {
                 ["type"] = "dialogue.continue",
                 ["command_id"] = commandId,
                 ["basis_token"] = basisToken,
                 ["dialogue_id"] = dialogueId,
-                ["locale"] = "zh-CN",
+                ["interaction_kind"] = NormalizeInteractionKind(interactionKind),
+                ["locale"] = RequireHostLocale(),
                 ["text"] = text
             });
         }
 
         public string CreateDialogueClose(
             string sessionId,
-            int sequence,
             string commandId,
             string basisToken,
             string dialogueId)
         {
-            return Build(sessionId, sequence, null, new JObject
+            return Build(sessionId, AllocateSequence(), null, new JObject
             {
                 ["type"] = "dialogue.close",
                 ["command_id"] = commandId,
@@ -107,13 +125,12 @@ namespace Luoxia.Net
 
         public string CreateMapMove(
             string sessionId,
-            int sequence,
             string commandId,
             string basisToken,
             string worldId,
             string destinationEntityId)
         {
-            return Build(sessionId, sequence, null, new JObject
+            return Build(sessionId, AllocateSequence(), null, new JObject
             {
                 ["type"] = "map.move",
                 ["command_id"] = commandId,
@@ -128,12 +145,11 @@ namespace Luoxia.Net
 
         public string CreateEventCardTrigger(
             string sessionId,
-            int sequence,
             string commandId,
             string basisToken,
             string eventCardId)
         {
-            return Build(sessionId, sequence, null, new JObject
+            return Build(sessionId, AllocateSequence(), null, new JObject
             {
                 ["type"] = "event_card.trigger",
                 ["command_id"] = commandId,
@@ -144,11 +160,10 @@ namespace Luoxia.Net
 
         public string CreatePlayerDayEnd(
             string sessionId,
-            int sequence,
             string commandId,
             string basisToken)
         {
-            return Build(sessionId, sequence, null, new JObject
+            return Build(sessionId, AllocateSequence(), null, new JObject
             {
                 ["type"] = "player_day.end",
                 ["command_id"] = commandId,
@@ -156,14 +171,70 @@ namespace Luoxia.Net
             });
         }
 
-        /// <summary>Allocate next client sequence and build envelope (preferred for real sends).</summary>
-        public string CreateReadyAuto(string sessionId, string clientBuildDigest) =>
-            CreateReady(sessionId, AllocateSequence(), clientBuildDigest);
+        public string CreateStageOutcomeProposal(
+            string sessionId,
+            string commandId,
+            string basisToken,
+            string stageInstanceId,
+            int stageRevision,
+            string outcomeType,
+            JObject outcome,
+            string evidenceDigest)
+        {
+            if (string.IsNullOrEmpty(outcomeType))
+            {
+                throw new ArgumentException("outcomeType required", nameof(outcomeType));
+            }
 
-        public string CreateResyncAuto(string sessionId, string basisToken) =>
-            CreateResync(sessionId, AllocateSequence(), basisToken);
+            if (string.IsNullOrEmpty(evidenceDigest) || evidenceDigest.Length != 64)
+            {
+                throw new ArgumentException("evidenceDigest must be 64-char sha256 hex", nameof(evidenceDigest));
+            }
 
-        private int AllocateSequence() => _nextSequence++;
+            return Build(sessionId, AllocateSequence(), null, new JObject
+            {
+                ["type"] = "stage.outcome_proposal",
+                ["command_id"] = commandId,
+                ["basis_token"] = basisToken,
+                ["stage_instance_id"] = stageInstanceId,
+                ["stage_revision"] = stageRevision,
+                ["outcome_type"] = outcomeType,
+                ["outcome"] = outcome ?? new JObject(),
+                ["evidence_digest"] = evidenceDigest
+            });
+        }
+
+        private static string RequireHostLocale()
+        {
+            var locale = HostDisplayLocale.Preferred;
+            if (string.IsNullOrWhiteSpace(locale))
+            {
+                throw new InvalidOperationException(
+                    "HostDisplayLocale must be set from Bootstrap/provision before dialogue commands");
+            }
+
+            return locale;
+        }
+
+        private static string NormalizeInteractionKind(string interactionKind)
+        {
+            if (string.IsNullOrWhiteSpace(interactionKind))
+            {
+                return DefaultInteractionKind;
+            }
+
+            switch (interactionKind)
+            {
+                case "dialogue":
+                case "goal_plan":
+                case "definition_draft":
+                    return interactionKind;
+                default:
+                    throw new ArgumentException(
+                        $"interaction_kind must be dialogue|goal_plan|definition_draft, got '{interactionKind}'",
+                        nameof(interactionKind));
+            }
+        }
 
         private static string Build(string sessionId, int sequence, string correlationId, JObject message)
         {

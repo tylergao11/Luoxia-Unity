@@ -4,7 +4,8 @@ namespace Luoxia.UI.Core
 {
     /// <summary>
     /// Bottom feature tab panel base (Dialogue / Event / ...).
-    /// Active feature is visual + input enabled; inactive still receives SessionView updates.
+    /// Visual page slide is owned by MainWorldScreen FeaturePagesContent;
+    /// this panel only toggles input (immediate cut on deactivate).
     /// </summary>
     public abstract class FeaturePanel : LuoxiaView, IFeaturePanel
     {
@@ -33,20 +34,20 @@ namespace Luoxia.UI.Core
         {
             _isActiveFeature = active;
 
-            if (activeRoot != null)
+            if (activeRoot != null && activeRoot != gameObject)
             {
-                activeRoot.SetActive(active);
+                activeRoot.SetActive(true);
             }
 
             if (canvasGroup != null)
             {
-                canvasGroup.alpha = active ? 1f : 0f;
+                // Pages stay opaque; pager clips. Deactivate immediately cuts input.
+                canvasGroup.alpha = 1f;
                 canvasGroup.interactable = active;
                 canvasGroup.blocksRaycasts = active;
             }
             else if (activeRoot == null)
             {
-                // fallback: whole object
                 if (active)
                 {
                     Show();
@@ -55,6 +56,10 @@ namespace Luoxia.UI.Core
                 {
                     Hide();
                 }
+            }
+            else
+            {
+                activeRoot.SetActive(active);
             }
 
             OnActiveFeatureChanged(active);

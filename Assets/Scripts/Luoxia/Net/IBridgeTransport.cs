@@ -15,17 +15,53 @@ namespace Luoxia.Net
 
     /// <summary>
     /// Builds contract-valid ClientEnvelope payloads. Does not own world rules.
+    /// Sequence is allocated only via ClientEnvelopeFactory.AllocateSequence.
     /// </summary>
     public interface IClientEnvelopeFactory
     {
-        string CreateReady(string sessionId, int sequence, string clientBuildDigest);
-        string CreateResync(string sessionId, int sequence, string basisToken);
-        string CreateDialogueStart(string sessionId, int sequence, string commandId, string basisToken, string recipientEntityIdOrSystem, string text);
-        string CreateDialogueContinue(string sessionId, int sequence, string commandId, string basisToken, string dialogueId, string text);
-        string CreateDialogueClose(string sessionId, int sequence, string commandId, string basisToken, string dialogueId);
-        string CreateMapMove(string sessionId, int sequence, string commandId, string basisToken, string worldId, string destinationEntityId);
-        string CreateEventCardTrigger(string sessionId, int sequence, string commandId, string basisToken, string eventCardId);
-        string CreatePlayerDayEnd(string sessionId, int sequence, string commandId, string basisToken);
+        int PeekNextSequence { get; }
+        void SetNextSequence(int sequence);
+        int AllocateSequence();
+
+        string CreateReady(string sessionId, string clientBuildDigest);
+        string CreateResync(string sessionId, string basisToken);
+        string CreateDialogueStart(
+            string sessionId,
+            string commandId,
+            string basisToken,
+            string worldId,
+            string recipientEntityIdOrSystem,
+            string text,
+            string interactionKind = ClientEnvelopeFactory.DefaultInteractionKind);
+        string CreateDialogueContinue(
+            string sessionId,
+            string commandId,
+            string basisToken,
+            string dialogueId,
+            string text,
+            string interactionKind = ClientEnvelopeFactory.DefaultInteractionKind);
+        string CreateDialogueClose(string sessionId, string commandId, string basisToken, string dialogueId);
+        string CreateMapMove(
+            string sessionId,
+            string commandId,
+            string basisToken,
+            string worldId,
+            string destinationEntityId);
+        string CreateEventCardTrigger(
+            string sessionId,
+            string commandId,
+            string basisToken,
+            string eventCardId);
+        string CreatePlayerDayEnd(string sessionId, string commandId, string basisToken);
+        string CreateStageOutcomeProposal(
+            string sessionId,
+            string commandId,
+            string basisToken,
+            string stageInstanceId,
+            int stageRevision,
+            string outcomeType,
+            Newtonsoft.Json.Linq.JObject outcome,
+            string evidenceDigest);
     }
 
     /// <summary>
@@ -35,9 +71,11 @@ namespace Luoxia.Net
     {
         bool HasPending { get; }
         string PendingCommandId { get; }
+        string PendingEnvelopeJson { get; }
         bool TryBegin(string commandId, string originalEnvelopeJson);
         void Complete(string commandId);
         void Fail(string commandId, string reason);
+        event Action PendingChanged;
         event Action<string> CommandCompleted;
         event Action<string, string> CommandFailed;
     }

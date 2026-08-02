@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Luoxia.Assets;
 using Luoxia.Contracts;
 using Luoxia.UI.Core;
 using UnityEngine;
@@ -7,11 +8,16 @@ using UnityEngine.UI;
 namespace Luoxia.UI.Features
 {
     /// <summary>
-    /// Dialogue tab: turn list + input. Free text only for currently selected NPC/System.
+    /// Dialogue tab: turn list + input. Free text for effective target
+    /// (_selection.Current ?? focused dialogue non-player Entity).
+    /// InputBar alpha=1 while dialogue feature active; hidden while event feature active.
     /// </summary>
     public sealed class DialogueFeaturePanel : FeaturePanel
     {
         public const string Id = "dialogue";
+
+        private const string BudgetExhaustedPlaceholder = "今日行动力已尽，请收工";
+        private const string NoTargetPlaceholder = "点击上方头像选择交谈对象";
 
         protected override string ResolveDefaultFeatureId() => Id;
 
@@ -21,11 +27,13 @@ namespace Luoxia.UI.Features
         [SerializeField] private Button sendButton;
         [SerializeField] private Text inputPlaceholder;
         [SerializeField] private ScrollRect scrollRect;
+        [SerializeField] private CanvasGroup inputBarGroup;
 
         private ListViewController<DialogueTurnItemModel, DialogueTurnItemView> _list;
         private IPlayerIntentSink _intents;
         private IDialogueSelection _selection;
-        private string _playerEntityId;
+        private bool _commandInteractable = true;
+        private bool _budgetExhausted;
 
         public void Configure(IPlayerIntentSink intents, IDialogueSelection selection)
         {
@@ -36,6 +44,18 @@ namespace Luoxia.UI.Features
                 _selection.Changed -= HandleSelectionChanged;
                 _selection.Changed += HandleSelectionChanged;
             }
+        }
+
+        public void SetCommandInteractable(bool interactable)
+        {
+            _commandInteractable = interactable;
+            RefreshPlaceholder();
+        }
+
+        public void SetBudgetExhausted(bool exhausted)
+        {
+            _budgetExhausted = exhausted;
+            RefreshPlaceholder();
         }
 
         protected override void Awake()
@@ -70,6 +90,18 @@ namespace Luoxia.UI.Features
             _list?.Clear();
         }
 
+        protected override void OnActiveFeatureChanged(bool active)
+        {
+            if (inputBarGroup != null)
+            {
+                inputBarGroup.alpha = active ? 1f : 0f;
+                inputBarGroup.blocksRaycasts = active;
+                inputBarGroup.interactable = active;
+            }
+
+            RefreshPlaceholder();
+        }
+
         public override void OnSessionView(SessionViewDto view)
         {
             if (view == null)
@@ -77,7 +109,6 @@ namespace Luoxia.UI.Features
                 return;
             }
 
-            _playerEntityId = view.player_entity_id;
             RebuildTurns(view);
             RefreshPlaceholder();
         }
@@ -90,7 +121,8 @@ namespace Luoxia.UI.Features
             }
 
             var models = new List<DialogueTurnItemModel>();
-            var dialogue = FindFocusedDialogue(view);
+            var dialogue = DialogueTargetResolver.FindFocusedDialogue(
+                view, _selection != null ? _selection.Current : null);
             if (dialogue?.turns != null)
             {
                 for (var i = 0; i < dialogue.turns.Count; i++)
@@ -101,7 +133,10 @@ namespace Luoxia.UI.Features
                     {
                         Turn = turn,
                         IsPlayer = isPlayer,
-                        SpeakerName = isPlayer ? "你" : ResolveSpeakerName(turn)
+                        SpeakerName = isPlayer
+                            ? string.Empty
+                            : ResolveSpeakerName(view, turn),
+                        Portrait = ResolveTurnPortrait(view, turn, isPlayer)
                     });
                 }
             }
@@ -114,61 +149,39 @@ namespace Luoxia.UI.Features
             }
         }
 
-        private DialogueViewDto FindFocusedDialogue(SessionViewDto view)
+        private static Sprite ResolveTurnPortrait(SessionViewDto view, DialogueTurnViewDto turn, bool isPlayer)
         {
-            if (view.dialogues == null || view.dialogues.Count == 0)
+            string subjectId = null;
+            if (isPlayer)
+            {
+                subjectId = view.player_entity_id;
+            }
+            else if (turn?.speaker != null &&
+                     turn.speaker.KindEnum == DialogueParticipantKind.Entity)
+            {
+                subjectId = turn.speaker.entity_id;
+            }
+
+            if (string.IsNullOrEmpty(subjectId))
             {
                 return null;
             }
 
-            var selected = _selection != null ? _selection.Current : null;
-            for (var i = 0; i < view.dialogues.Count; i++)
+            var node = LoreQuery.FindPortraitNode(view, subjectId, LayoutSlots.Avatar);
+            var hash = node?.asset?.content_hash;
+            if (string.IsNullOrEmpty(hash))
             {
-                var d = view.dialogues[i];
-                if (d == null || !d.IsActive)
-                {
-                    continue;
-                }
-
-                if (!selected.HasValue)
-                {
-                    return d;
-                }
-
-                if (MatchesSelection(d, selected.Value, view.player_entity_id))
-                {
-                    return d;
-                }
+                return null;
             }
 
+            var resolver = ContentHashSpriteResolverLocator.Shared;
+            if (resolver.TryResolve(hash, out var sprite, out var error))
+            {
+                return sprite;
+            }
+
+            Debug.LogWarning($"[DialogueTurn] portrait miss subject={subjectId}: {error}");
             return null;
-        }
-
-        private static bool MatchesSelection(DialogueViewDto dialogue, DialogueTarget target, string playerId)
-        {
-            if (dialogue.participants == null)
-            {
-                return false;
-            }
-
-            for (var i = 0; i < dialogue.participants.Count; i++)
-            {
-                var p = dialogue.participants[i];
-                if (target.kind == DialogueParticipantKind.System &&
-                    p.KindEnum == DialogueParticipantKind.System)
-                {
-                    return true;
-                }
-
-                if (target.kind == DialogueParticipantKind.Entity &&
-                    p.KindEnum == DialogueParticipantKind.Entity &&
-                    p.entity_id == target.entityId)
-                {
-                    return true;
-                }
-            }
-
-            return false;
         }
 
         private static bool IsPlayerSpeaker(DialogueTurnViewDto turn, string playerEntityId)
@@ -187,7 +200,7 @@ namespace Luoxia.UI.Features
                    turn.speaker.entity_id == playerEntityId;
         }
 
-        private static string ResolveSpeakerName(DialogueTurnViewDto turn)
+        private static string ResolveSpeakerName(SessionViewDto view, DialogueTurnViewDto turn)
         {
             if (turn?.speaker == null)
             {
@@ -196,7 +209,7 @@ namespace Luoxia.UI.Features
 
             if (turn.speaker.KindEnum == DialogueParticipantKind.System)
             {
-                return "渡口风闻";
+                return string.Empty;
             }
 
             var id = turn.speaker.entity_id;
@@ -205,12 +218,17 @@ namespace Luoxia.UI.Features
                 return string.Empty;
             }
 
-            return id.Length > 8 ? id.Substring(0, 8) : id;
+            return LoreQuery.ResolveSubjectDisplayName(view, id);
         }
 
         private void HandleSend()
         {
             if (_intents == null || inputField == null)
+            {
+                return;
+            }
+
+            if (!IsActiveFeature || _budgetExhausted || !_commandInteractable)
             {
                 return;
             }
@@ -238,38 +256,62 @@ namespace Luoxia.UI.Features
 
         private void RefreshPlaceholder()
         {
-            if (inputPlaceholder == null)
+            var hasTarget = DialogueTargetResolver.TryResolveEffective(
+                LatestView,
+                _selection != null ? _selection.Current : null,
+                out var effective);
+            var inputAllowed = IsActiveFeature && _commandInteractable && !_budgetExhausted && hasTarget;
+
+            if (inputPlaceholder != null)
             {
-                return;
+                if (_budgetExhausted)
+                {
+                    inputPlaceholder.text = BudgetExhaustedPlaceholder;
+                }
+                else if (!hasTarget)
+                {
+                    inputPlaceholder.text = NoTargetPlaceholder;
+                }
+                else
+                {
+                    var name = effective.displayName;
+                    if (string.IsNullOrEmpty(name) &&
+                        effective.kind == DialogueParticipantKind.Entity &&
+                        !string.IsNullOrEmpty(effective.entityId))
+                    {
+                        name = LoreQuery.ResolveSubjectDisplayName(LatestView, effective.entityId);
+                    }
+
+                    inputPlaceholder.text = string.IsNullOrEmpty(name)
+                        ? "说…"
+                        : $"对{name}说…";
+                }
             }
 
-            var selected = _selection != null ? _selection.Current : null;
-            if (!selected.HasValue)
+            if (inputField != null)
             {
-                inputPlaceholder.text = "请先选择交谈对象……";
-                if (inputField != null)
+                inputField.interactable = inputAllowed;
+                if (_budgetExhausted)
                 {
                     inputField.interactable = false;
                 }
-
-                if (sendButton != null)
-                {
-                    sendButton.interactable = false;
-                }
-
-                return;
-            }
-
-            var name = selected.Value.displayName ?? "对方";
-            inputPlaceholder.text = $"你想对{name}说什么……";
-            if (inputField != null)
-            {
-                inputField.interactable = true;
             }
 
             if (sendButton != null)
             {
-                sendButton.interactable = true;
+                sendButton.interactable = inputAllowed;
+                if (_budgetExhausted)
+                {
+                    sendButton.interactable = false;
+                }
+            }
+
+            if (inputBarGroup != null)
+            {
+                var dialogueActive = IsActiveFeature;
+                inputBarGroup.alpha = dialogueActive ? 1f : 0f;
+                inputBarGroup.blocksRaycasts = dialogueActive;
+                inputBarGroup.interactable = dialogueActive && !_budgetExhausted;
             }
         }
     }

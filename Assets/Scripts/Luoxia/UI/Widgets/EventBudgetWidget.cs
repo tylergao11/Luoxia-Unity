@@ -7,6 +7,8 @@ namespace Luoxia.UI.Widgets
 {
     /// <summary>
     /// AP / event budget bar. Values only from SessionView.event_budget.
+    /// daily_capacity and card costs are pack-owned (ContentBundle.event_budget);
+    /// Host never hardcodes capacity or spend tables — only projects the view.
     /// </summary>
     public sealed class EventBudgetWidget : HudWidget
     {
@@ -22,7 +24,8 @@ namespace Luoxia.UI.Widgets
             {
                 if (budgetText != null)
                 {
-                    budgetText.text = string.Format(format, 0, 0);
+                    // No SessionView.event_budget yet — never invent pack capacity.
+                    budgetText.text = "—";
                 }
 
                 if (budgetSlider != null)

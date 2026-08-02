@@ -16,31 +16,128 @@ namespace Luoxia.Contracts
         [JsonExtensionData]
         public IDictionary<string, JToken> Raw { get; set; }
 
-        public string Resolve(string preferredLocale = "zh-CN", string fallback = "")
+        /// <summary>
+        /// RFC 4647 Lookup against Host preferred locale: exact, then truncate
+        /// language-range subtags, then prefix match on available keys.
+        /// If no match and the map has exactly one key, use that key.
+        /// Otherwise return the missing-localization placeholder — never dictionary order.
+        /// </summary>
+        public string Resolve(string preferredLocale = null, string fallback = null)
         {
+            var miss = fallback ?? HostDisplayLocale.MissingPlaceholder;
             if (Raw == null || Raw.Count == 0)
             {
-                return fallback;
+                return miss;
             }
 
-            if (Raw.TryGetValue(preferredLocale, out var preferred) && preferred != null)
+            var preferred = string.IsNullOrWhiteSpace(preferredLocale)
+                ? HostDisplayLocale.Preferred
+                : preferredLocale.Trim();
+
+            if (!string.IsNullOrEmpty(preferred))
             {
-                return preferred.Type == JTokenType.String ? preferred.Value<string>() : preferred.ToString();
+                if (TryGetString(preferred, out var exact))
+                {
+                    return exact;
+                }
+
+                // RFC 4647 Lookup: progressively truncate the language range.
+                var range = preferred;
+                while (TryTruncateLanguageRange(range, out range))
+                {
+                    if (TryGetString(range, out var truncated))
+                    {
+                        return truncated;
+                    }
+                }
+
+                // Prefix: available tag starts with preferred + "-" (e.g. zh → zh-CN).
+                foreach (var pair in Raw)
+                {
+                    if (string.IsNullOrEmpty(pair.Key) || pair.Value == null)
+                    {
+                        continue;
+                    }
+
+                    if (pair.Key.StartsWith(preferred + "-", StringComparison.OrdinalIgnoreCase)
+                        && TryTokenToString(pair.Value, out var prefixed))
+                    {
+                        return prefixed;
+                    }
+                }
+            }
+
+            // Exactly one locale key → use it; never guess among many by dictionary order.
+            if (Raw.Count == 1)
+            {
+                foreach (var pair in Raw)
+                {
+                    if (pair.Value != null && TryTokenToString(pair.Value, out var only))
+                    {
+                        return only;
+                    }
+                }
+            }
+
+            return miss;
+        }
+
+        private bool TryGetString(string locale, out string value)
+        {
+            value = null;
+            if (Raw == null || string.IsNullOrEmpty(locale))
+            {
+                return false;
             }
 
             foreach (var pair in Raw)
             {
-                if (pair.Value == null)
+                if (pair.Key == null || pair.Value == null)
                 {
                     continue;
                 }
 
-                return pair.Value.Type == JTokenType.String
-                    ? pair.Value.Value<string>()
-                    : pair.Value.ToString();
+                if (!string.Equals(pair.Key, locale, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                return TryTokenToString(pair.Value, out value);
             }
 
-            return fallback;
+            return false;
+        }
+
+        private static bool TryTruncateLanguageRange(string range, out string truncated)
+        {
+            truncated = null;
+            if (string.IsNullOrEmpty(range))
+            {
+                return false;
+            }
+
+            var dash = range.LastIndexOf('-');
+            if (dash <= 0)
+            {
+                return false;
+            }
+
+            truncated = range.Substring(0, dash);
+            return truncated.Length > 0;
+        }
+
+        private static bool TryTokenToString(JToken token, out string value)
+        {
+            if (token == null || token.Type == JTokenType.Null)
+            {
+                value = null;
+                return false;
+            }
+
+            value = token.Type == JTokenType.String
+                ? token.Value<string>() ?? string.Empty
+                : token.ToString();
+            return true;
         }
 
         public static LocalizedTextDto FromZh(string text)
@@ -112,5 +209,17 @@ namespace Luoxia.Contracts
         Entity,
         System,
         Human
+    }
+
+    /// <summary>
+    /// Lore kinds projected into SessionView.lore. Unknown kinds are ignored by UI.
+    /// </summary>
+    public enum LoreKind
+    {
+        Unknown,
+        Profile,
+        Hearsay,
+        Arrival,
+        Nightfall
     }
 }

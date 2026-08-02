@@ -14,14 +14,75 @@ namespace Luoxia.Contracts
         [JsonProperty("view_revision")] public int view_revision;
         [JsonProperty("basis_token")] public string basis_token;
         [JsonProperty("player_entity_id")] public string player_entity_id;
+        /// <summary>
+        /// Runtime UUID of the player's current location entity.
+        /// Optional until Engine SessionViewProjector ships the field; null-safe UI.
+        /// </summary>
+        [JsonProperty("player_location_entity_id")] public string player_location_entity_id;
         [JsonProperty("world_time")] public LogicalTimeDto world_time;
         [JsonProperty("render_nodes")] public List<RenderNodeDto> render_nodes = new List<RenderNodeDto>();
+        /// <summary>
+        /// Visible lore chapters (profile / hearsay / arrival / nightfall).
+        /// Optional until Engine projection exists; empty list = no lore UI entry.
+        /// </summary>
+        [JsonProperty("lore")] public List<LoreViewDto> lore = new List<LoreViewDto>();
         [JsonProperty("goal_plans")] public List<GoalPlanViewDto> goal_plans = new List<GoalPlanViewDto>();
         [JsonProperty("notices")] public List<NoticeDto> notices = new List<NoticeDto>();
         [JsonProperty("day_cycle")] public DayCycleStateDto day_cycle;
         [JsonProperty("event_budget")] public EventBudgetViewDto event_budget;
         [JsonProperty("event_cards")] public List<EventCardViewDto> event_cards = new List<EventCardViewDto>();
         [JsonProperty("dialogues")] public List<DialogueViewDto> dialogues = new List<DialogueViewDto>();
+    }
+
+    /// <summary>
+    /// Client-forward Lore projection. Engine schema pending; fields are empty-safe.
+    /// </summary>
+    [Serializable]
+    public sealed class LoreViewDto
+    {
+        [JsonProperty("lore_id")] public string lore_id;
+        [JsonProperty("lore_kind")] public string lore_kind;
+        /// <summary>Engine SubjectRef; prefer <see cref="subject_entity_id"/>.</summary>
+        [JsonProperty("subject")] public JToken subject;
+        [JsonProperty("title")] public LocalizedTextDto title;
+        [JsonProperty("body")] public LocalizedTextDto body;
+        [JsonProperty("ordinal")] public int ordinal;
+
+        public string subject_entity_id
+        {
+            get
+            {
+                if (subject == null || subject.Type != JTokenType.Object)
+                {
+                    return null;
+                }
+
+                // SubjectRef entity: { kind:"entity", entity:{ world_id, entity_id } }
+                var nested = subject["entity"];
+                if (nested != null && nested.Type == JTokenType.Object)
+                {
+                    return nested["entity_id"]?.ToString();
+                }
+
+                return subject["entity_id"]?.ToString();
+            }
+        }
+
+        public LoreKind KindEnum => lore_kind switch
+        {
+            "profile" => LoreKind.Profile,
+            "hearsay" => LoreKind.Hearsay,
+            "arrival" => LoreKind.Arrival,
+            "nightfall" => LoreKind.Nightfall,
+            "opening" => LoreKind.Arrival,
+            _ => LoreKind.Unknown
+        };
+
+        public string ResolveTitle(string preferredLocale = null) =>
+            title != null ? title.Resolve(preferredLocale) : HostDisplayLocale.MissingPlaceholder;
+
+        public string ResolveBody(string preferredLocale = null) =>
+            body != null ? body.Resolve(preferredLocale) : HostDisplayLocale.MissingPlaceholder;
     }
 
     [Serializable]
@@ -80,8 +141,12 @@ namespace Luoxia.Contracts
         [JsonProperty("turns")] public List<DialogueTurnViewDto> turns = new List<DialogueTurnViewDto>();
         [JsonProperty("status")] public string status;
 
+        /// <summary>
+        /// Only status===active is continue-eligible. Unknown / closed / other → not active.
+        /// Host never compares dialogue.day vs day_cycle.day.
+        /// </summary>
         public DialogueStatus StatusEnum =>
-            status == "closed" ? DialogueStatus.Closed : DialogueStatus.Active;
+            status == "active" ? DialogueStatus.Active : DialogueStatus.Closed;
 
         public bool IsActive => StatusEnum == DialogueStatus.Active;
     }
@@ -90,7 +155,22 @@ namespace Luoxia.Contracts
     public sealed class DialogueParticipantRefDto
     {
         [JsonProperty("participant_kind")] public string participant_kind;
-        [JsonProperty("entity_id")] public string entity_id;
+        /// <summary>Engine EntityRef when participant_kind=entity.</summary>
+        [JsonProperty("entity")] public JToken entity;
+
+        [JsonIgnore]
+        public string entity_id
+        {
+            get
+            {
+                if (entity == null || entity.Type != JTokenType.Object)
+                {
+                    return null;
+                }
+
+                return entity["entity_id"]?.ToString();
+            }
+        }
 
         public DialogueParticipantKind KindEnum => participant_kind switch
         {
@@ -131,6 +211,18 @@ namespace Luoxia.Contracts
                     return null;
                 }
 
+                // Engine EntityRef: { kind:"entity", entity:{ world_id, entity_id, ... } }
+                var nested = subject["entity"];
+                if (nested != null && nested.Type == JTokenType.Object)
+                {
+                    var nestedId = nested["entity_id"]?.ToString();
+                    if (!string.IsNullOrEmpty(nestedId))
+                    {
+                        return nestedId;
+                    }
+                }
+
+                // Flat mock / legacy: { entity_id }
                 return subject["entity_id"]?.ToString();
             }
         }

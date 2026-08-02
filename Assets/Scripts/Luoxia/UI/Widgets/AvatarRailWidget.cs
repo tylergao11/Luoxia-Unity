@@ -1,13 +1,16 @@
 using System.Collections.Generic;
+using Luoxia.Assets;
 using Luoxia.Contracts;
 using Luoxia.UI.Core;
 using UnityEngine;
 
+
 namespace Luoxia.UI.Widgets
 {
     /// <summary>
-    /// Top avatar strip for selectable dialogue targets (NPC / System).
-    /// Does not invent characters: derived from active dialogues + portrait render nodes for now.
+    /// Top avatar strip for selectable dialogue targets.
+    /// Sources: co-located portrait/interaction_anchor subjects + active dialogue participants.
+    /// Portraits resolve via content_hash; miss leaves empty sprite (no fake art).
     /// </summary>
     public sealed class AvatarRailWidget : HudWidget
     {
@@ -17,11 +20,16 @@ namespace Luoxia.UI.Widgets
         private ListViewController<AvatarRailItemModel, AvatarRailItemView> _list;
         private IDialogueSelection _selection;
         private IPlayerIntentSink _intents;
+        private System.Action<string> _onInspectSubject;
 
-        public void Configure(IDialogueSelection selection, IPlayerIntentSink intents)
+        public void Configure(
+            IDialogueSelection selection,
+            IPlayerIntentSink intents,
+            System.Action<string> onInspectSubject = null)
         {
             _selection = selection;
             _intents = intents;
+            _onInspectSubject = onInspectSubject;
 
             if (_selection != null)
             {
@@ -62,6 +70,7 @@ namespace Luoxia.UI.Widgets
             for (var i = 0; i < _list.ActiveItems.Count; i++)
             {
                 _list.ActiveItems[i].SetSelectHandler(HandleSelect);
+                _list.ActiveItems[i].SetInspectHandler(HandleInspect);
             }
         }
 
@@ -69,23 +78,45 @@ namespace Luoxia.UI.Widgets
         {
             var result = new List<AvatarRailItemModel>();
             var selected = _selection != null ? _selection.Current : null;
+            var seen = new HashSet<string>();
+            var hasSystem = false;
 
-            // System is always available as a product premise.
-            result.Add(new AvatarRailItemModel
+            void AddEntity(string entityId)
             {
-                Target = DialogueTarget.System("渡口风闻"),
-                DisplayName = "渡口风闻",
-                Selected = selected.HasValue && selected.Value.kind == DialogueParticipantKind.System,
-                HasNotification = false
-            });
+                if (string.IsNullOrEmpty(entityId) ||
+                    entityId == view.player_entity_id ||
+                    !seen.Add(entityId))
+                {
+                    return;
+                }
 
-            // Participants from active dialogues (entity side, not player).
+                var display = LoreQuery.ResolveSubjectDisplayName(view, entityId);
+                var isSelected = selected.HasValue &&
+                                 selected.Value.kind == DialogueParticipantKind.Entity &&
+                                 selected.Value.entityId == entityId;
+
+                result.Add(new AvatarRailItemModel
+                {
+                    Target = DialogueTarget.Entity(entityId, display),
+                    DisplayName = display,
+                    Selected = isSelected,
+                    Portrait = ResolvePortrait(view, entityId),
+                    CanInspect = LoreQuery.HasDossier(view, entityId),
+                    SubjectEntityId = entityId
+                });
+            }
+
+            var colocated = LoreQuery.CollectCoLocatedEntityIds(view);
+            for (var i = 0; i < colocated.Count; i++)
+            {
+                AddEntity(colocated[i]);
+            }
+
             if (view.dialogues == null)
             {
                 return result;
             }
 
-            var seen = new HashSet<string>();
             for (var d = 0; d < view.dialogues.Count; d++)
             {
                 var dialogue = view.dialogues[d];
@@ -97,37 +128,52 @@ namespace Luoxia.UI.Widgets
                 for (var p = 0; p < dialogue.participants.Count; p++)
                 {
                     var part = dialogue.participants[p];
-                    if (part.KindEnum != DialogueParticipantKind.Entity)
+                    if (part.KindEnum == DialogueParticipantKind.System)
                     {
+                        if (hasSystem)
+                        {
+                            continue;
+                        }
+
+                        hasSystem = true;
+                        result.Add(new AvatarRailItemModel
+                        {
+                            Target = DialogueTarget.System(string.Empty),
+                            DisplayName = string.Empty,
+                            Selected = selected.HasValue && selected.Value.kind == DialogueParticipantKind.System,
+                            HasNotification = false,
+                            CanInspect = false
+                        });
                         continue;
                     }
 
-                    if (string.IsNullOrEmpty(part.entity_id) || seen.Contains(part.entity_id))
+                    if (part.KindEnum == DialogueParticipantKind.Entity)
                     {
-                        continue;
+                        AddEntity(part.entity_id);
                     }
-
-                    if (part.entity_id == view.player_entity_id)
-                    {
-                        continue;
-                    }
-
-                    seen.Add(part.entity_id);
-                    var isSelected = selected.HasValue &&
-                                     selected.Value.kind == DialogueParticipantKind.Entity &&
-                                     selected.Value.entityId == part.entity_id;
-
-                    result.Add(new AvatarRailItemModel
-                    {
-                        Target = DialogueTarget.Entity(part.entity_id, ShortId(part.entity_id)),
-                        DisplayName = ShortId(part.entity_id),
-                        Selected = isSelected,
-                        Portrait = null
-                    });
                 }
             }
 
             return result;
+        }
+
+        private static Sprite ResolvePortrait(SessionViewDto view, string entityId)
+        {
+            var node = LoreQuery.FindPortraitNode(view, entityId, LayoutSlots.Avatar);
+            var hash = node?.asset?.content_hash;
+            if (string.IsNullOrEmpty(hash))
+            {
+                return null;
+            }
+
+            var resolver = ContentHashSpriteResolverLocator.Shared;
+            if (resolver.TryResolve(hash, out var sprite, out var error))
+            {
+                return sprite;
+            }
+
+            Debug.LogWarning($"[AvatarRail] portrait miss entity={entityId}: {error}");
+            return null;
         }
 
         private void HandleSelect(DialogueTarget target)
@@ -140,22 +186,17 @@ namespace Luoxia.UI.Widgets
             }
         }
 
+        private void HandleInspect(string subjectEntityId)
+        {
+            _onInspectSubject?.Invoke(subjectEntityId);
+        }
+
         private void HandleSelectionChanged(DialogueTarget? _)
         {
             if (LatestView != null)
             {
                 Paint(LatestView);
             }
-        }
-
-        private static string ShortId(string id)
-        {
-            if (string.IsNullOrEmpty(id) || id.Length <= 8)
-            {
-                return id;
-            }
-
-            return id.Substring(0, 8);
         }
     }
 }

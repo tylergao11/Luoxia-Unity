@@ -57,6 +57,11 @@ namespace Luoxia.UI.Core
         bool TryMapMove(string destinationEntityId);
         bool TryEndPlayerDay();
         bool TryOpenMap();
+        bool TrySubmitStageOutcome(
+            string stageInstanceId,
+            int stageRevision,
+            string outcomeType,
+            Newtonsoft.Json.Linq.JObject outcome = null);
     }
 
     [Serializable]

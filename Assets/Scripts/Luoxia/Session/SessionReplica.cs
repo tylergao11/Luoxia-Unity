@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Luoxia.Contracts;
 using UnityEngine;
 
@@ -48,15 +49,100 @@ namespace Luoxia.Session
             if (_state == SessionReplicaState.Synchronized &&
                 serverSequence != _expectedServerSequence)
             {
-                // gap: caller should resync; do not invent partial merge
                 Debug.LogWarning(
                     $"[SessionReplica] sequence gap expected={_expectedServerSequence} got={serverSequence}");
                 EnterResynchronizing();
                 return;
             }
 
+            view.lore ??= new List<LoreViewDto>();
+            view.render_nodes ??= new List<RenderNodeDto>();
+            view.dialogues ??= new List<DialogueViewDto>();
+            view.event_cards ??= new List<EventCardViewDto>();
+
             ReplaceView(view, serverSequence + 1);
             SetState(SessionReplicaState.Synchronized);
+        }
+
+        public bool AcknowledgeServerSequence(int serverSequence)
+        {
+            if (_state == SessionReplicaState.Fatal ||
+                _state == SessionReplicaState.Resynchronizing)
+            {
+                return false;
+            }
+
+            if (_state == SessionReplicaState.Synchronized &&
+                serverSequence != _expectedServerSequence)
+            {
+                Debug.LogWarning(
+                    $"[SessionReplica] sequence gap on non-view expected={_expectedServerSequence} got={serverSequence}");
+                EnterResynchronizing();
+                return false;
+            }
+
+            if (_state == SessionReplicaState.Synchronized ||
+                _state == SessionReplicaState.Synchronizing)
+            {
+                _expectedServerSequence = serverSequence + 1;
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Low-latency dialogue.reply merge. Final set remains SessionView.dialogues
+        /// (dedupe by turn_id). Does not advance server sequence baseline.
+        /// </summary>
+        public void ApplyDialogueReply(DialogueReplyDto reply)
+        {
+            if (_state == SessionReplicaState.Fatal ||
+                _state == SessionReplicaState.Resynchronizing ||
+                reply?.turn == null ||
+                _currentView == null)
+            {
+                return;
+            }
+
+            if (string.IsNullOrEmpty(reply.dialogue_id))
+            {
+                return;
+            }
+
+            _currentView.dialogues ??= new List<DialogueViewDto>();
+            DialogueViewDto dialogue = null;
+            for (var i = 0; i < _currentView.dialogues.Count; i++)
+            {
+                var d = _currentView.dialogues[i];
+                if (d != null && d.dialogue_id == reply.dialogue_id)
+                {
+                    dialogue = d;
+                    break;
+                }
+            }
+
+            if (dialogue == null)
+            {
+                Debug.Log($"[SessionReplica] dialogue.reply for unknown dialogue_id={reply.dialogue_id}; waiting SessionView");
+                return;
+            }
+
+            dialogue.turns ??= new List<DialogueTurnViewDto>();
+            var turnId = reply.turn.turn_id;
+            if (!string.IsNullOrEmpty(turnId))
+            {
+                for (var i = 0; i < dialogue.turns.Count; i++)
+                {
+                    if (dialogue.turns[i] != null && dialogue.turns[i].turn_id == turnId)
+                    {
+                        return;
+                    }
+                }
+            }
+
+            dialogue.turns.Add(reply.turn);
+            ViewChanged?.Invoke(_currentView);
         }
 
         public void EnterResynchronizing()
@@ -73,6 +159,18 @@ namespace Luoxia.Session
         {
             _fatalReason = reason ?? "unknown";
             SetState(SessionReplicaState.Fatal);
+        }
+
+        /// <summary>Clear Fatal so an explicit ready/resync retry can re-enter Synchronized.</summary>
+        public void ClearFatalForRetry()
+        {
+            if (_state != SessionReplicaState.Fatal)
+            {
+                return;
+            }
+
+            _fatalReason = null;
+            SetState(SessionReplicaState.Resynchronizing);
         }
 
         private void ReplaceView(SessionViewDto view, int nextExpectedSequence)

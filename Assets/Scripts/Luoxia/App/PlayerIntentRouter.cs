@@ -3,12 +3,14 @@ using Luoxia.Contracts;
 using Luoxia.Net;
 using Luoxia.Session;
 using Luoxia.UI.Core;
+using Newtonsoft.Json.Linq;
 using UnityEngine;
 
 namespace Luoxia.App
 {
     /// <summary>
     /// Maps UI intents to ClientEnvelope commands via BridgeSessionClient.
+    /// Client sequence comes only from the shared ClientEnvelopeFactory.
     /// </summary>
     public sealed class PlayerIntentRouter : IPlayerIntentSink
     {
@@ -19,8 +21,6 @@ namespace Luoxia.App
         private readonly ClientEnvelopeFactory _factory;
         private readonly MonoBehaviour _runner;
         private readonly string _worldId;
-
-        private int _clientSequence;
 
         public PlayerIntentRouter(
             ISessionViewSource session,
@@ -46,16 +46,10 @@ namespace Luoxia.App
             return true;
         }
 
-        public bool TrySendDialogueText(string text)
+        public bool TrySendDialogueText(string text, string interactionKind = ClientEnvelopeFactory.DefaultInteractionKind)
         {
             if (string.IsNullOrWhiteSpace(text))
             {
-                return false;
-            }
-
-            if (!_selection.Current.HasValue)
-            {
-                Debug.LogWarning("[Intent] no dialogue target");
                 return false;
             }
 
@@ -64,29 +58,51 @@ namespace Luoxia.App
                 return false;
             }
 
-            var target = _selection.Current.Value;
+            // Same effective target as DialogueFeaturePanel display: selection ?? focused non-player.
+            if (!DialogueTargetResolver.TryResolveEffective(view, _selection.Current, out var target))
+            {
+                Debug.LogWarning("[Intent] no dialogue target");
+                return false;
+            }
+
+            if (view.event_budget != null && view.event_budget.remaining <= 0)
+            {
+                Debug.LogWarning("[Intent] dialogue blocked: event_budget.remaining=0; use player_day.end");
+                return false;
+            }
+
             var commandId = ClientEnvelopeFactory.NewCommandId();
-            var sessionId = view.session_id;
-            var seq = NextSequence();
-            var dialogue = FindMatchingDialogue(view, target);
+            var kind = string.IsNullOrWhiteSpace(interactionKind)
+                ? ClientEnvelopeFactory.DefaultInteractionKind
+                : interactionKind;
 
             string envelope;
+            var dialogue = FindMatchingDialogue(view, target);
             if (dialogue != null)
             {
                 envelope = _factory.CreateDialogueContinue(
-                    sessionId, seq, commandId, view.basis_token, dialogue.dialogue_id, text.Trim());
+                    view.session_id, commandId, view.basis_token, dialogue.dialogue_id, text.Trim(), kind);
             }
             else
             {
+                if (target.kind != DialogueParticipantKind.System && string.IsNullOrEmpty(_worldId))
+                {
+                    Debug.LogWarning("[Intent] dialogue.start needs world_id from session bootstrap");
+                    return false;
+                }
+
                 var recipient = target.kind == DialogueParticipantKind.System
                     ? "system"
                     : target.entityId;
                 envelope = _factory.CreateDialogueStart(
-                    sessionId, seq, commandId, view.basis_token, recipient, text.Trim());
+                    view.session_id, commandId, view.basis_token, _worldId, recipient, text.Trim(), kind);
             }
 
             return Dispatch(commandId, envelope);
         }
+
+        public bool TrySendDialogueText(string text) =>
+            TrySendDialogueText(text, ClientEnvelopeFactory.DefaultInteractionKind);
 
         public bool TryCloseActiveDialogue()
         {
@@ -103,7 +119,7 @@ namespace Luoxia.App
 
             var commandId = ClientEnvelopeFactory.NewCommandId();
             var envelope = _factory.CreateDialogueClose(
-                view.session_id, NextSequence(), commandId, view.basis_token, dialogue.dialogue_id);
+                view.session_id, commandId, view.basis_token, dialogue.dialogue_id);
             return Dispatch(commandId, envelope);
         }
 
@@ -122,7 +138,7 @@ namespace Luoxia.App
 
             var commandId = ClientEnvelopeFactory.NewCommandId();
             var envelope = _factory.CreateEventCardTrigger(
-                view.session_id, NextSequence(), commandId, view.basis_token, eventCardId);
+                view.session_id, commandId, view.basis_token, eventCardId);
             return Dispatch(commandId, envelope);
         }
 
@@ -161,7 +177,7 @@ namespace Luoxia.App
 
             var commandId = ClientEnvelopeFactory.NewCommandId();
             var envelope = _factory.CreateMapMove(
-                view.session_id, NextSequence(), commandId, view.basis_token, _worldId, destinationEntityId);
+                view.session_id, commandId, view.basis_token, _worldId, destinationEntityId);
             return Dispatch(commandId, envelope);
         }
 
@@ -180,13 +196,42 @@ namespace Luoxia.App
 
             var commandId = ClientEnvelopeFactory.NewCommandId();
             var envelope = _factory.CreatePlayerDayEnd(
-                view.session_id, NextSequence(), commandId, view.basis_token);
+                view.session_id, commandId, view.basis_token);
+            return Dispatch(commandId, envelope);
+        }
+
+        public bool TrySubmitStageOutcome(
+            string stageInstanceId,
+            int stageRevision,
+            string outcomeType,
+            JObject outcome = null)
+        {
+            if (string.IsNullOrEmpty(stageInstanceId) ||
+                string.IsNullOrEmpty(outcomeType) ||
+                !EnsureCanMutate(out var view))
+            {
+                return false;
+            }
+
+            var outcomeObj = outcome ?? new JObject();
+            var digest = BridgeSessionClient.EvidenceDigestForOutcome(
+                stageInstanceId, stageRevision, outcomeType, outcomeObj);
+            var commandId = ClientEnvelopeFactory.NewCommandId();
+            var envelope = _factory.CreateStageOutcomeProposal(
+                view.session_id,
+                commandId,
+                view.basis_token,
+                stageInstanceId,
+                stageRevision,
+                outcomeType,
+                outcomeObj,
+                digest);
             return Dispatch(commandId, envelope);
         }
 
         public bool TryOpenMap()
         {
-            Debug.Log("[Intent] open map UI (local)");
+            // Local UI only — MapDestinationPanel listens via MainWorldScreen.
             return true;
         }
 
@@ -216,8 +261,6 @@ namespace Luoxia.App
                 Debug.LogError(task.Exception);
             }
         }
-
-        private int NextSequence() => _clientSequence++;
 
         private bool EnsureCanMutate(out SessionViewDto view)
         {
@@ -281,6 +324,8 @@ namespace Luoxia.App
                 return null;
             }
 
+            // Engine closes prior-day threads (reason_code day_ended). Host continues only
+            // status===active dialogues — never compare dialogue.day vs day_cycle.day.
             for (var i = 0; i < view.dialogues.Count; i++)
             {
                 var d = view.dialogues[i];

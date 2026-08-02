@@ -34,6 +34,10 @@ namespace Luoxia.Editor
             {
                 importer.spriteBorder = new Vector4(48, 40, 48, 40);
             }
+            else if (file.IndexOf("panel_event_modal", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                importer.spriteBorder = new Vector4(72, 72, 72, 72);
+            }
             else if (file.IndexOf("panel_bottom_gradient", System.StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 importer.spriteBorder = new Vector4(0, 80, 0, 200);

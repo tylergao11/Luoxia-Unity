@@ -121,6 +121,13 @@ namespace Luoxia.App
                     $"budget remaining={after.event_budget.remaining}/{after.event_budget.capacity} cards={afterCards} turns={afterTurns}");
             }
 
+            // Day1 drain: content-neutral probes until remaining==0, then hard UX assert.
+            // Coherent flow: drain → event/card → map → 收工 end-day → day2 probe (one end-day).
+            yield return DrainBudgetUntilExhausted();
+            yield return new WaitForSecondsRealtime(0.4f);
+            yield return Capture("03b-budget-exhausted.png");
+            AssertBudgetExhaustedUx();
+
             FindObjectOfType<MainWorldScreen>()?.ActivateFeature(EventFeaturePanel.Id);
             yield return new WaitForSecondsRealtime(0.55f);
             yield return Capture("04-event-page.png");
@@ -182,14 +189,66 @@ namespace Luoxia.App
             yield return new WaitForSecondsRealtime(0.4f);
             yield return Capture("07-map-modal.png");
             Check("narrative still closed on map capture", !IsNarrativeOpen());
+            var mapPanel = FindObjectOfType<MapDestinationPanel>(true);
+            Check("MapDestinationPanel open", mapPanel != null && mapPanel.IsOpen);
+            var scrimImg = GetSerialized<Image>(mapPanel, "scrimImage");
+            if (scrimImg != null)
+            {
+                var a = scrimImg.color.a;
+                Check("map scrim alpha in 45–60%", a >= 0.45f && a <= 0.60f);
+            }
+            else
+            {
+                Check("map scrim Image wired", false);
+            }
+
             CheckMapLabels();
 
             // Map navigation must move location without spending EventBudget/AP.
             yield return PerformMapMoveAndVerify();
 
-            Check(
-                "capture not blank camera clear",
-                _captureAttempts > 0 && _blankCaptures < _captureAttempts);
+            // Arrival lore may enqueue after scene crossfade — wait briefly.
+            // Arrival is NON-modal (ArrivalLoreOverlay); must not open NarrativeFrame / LoreChapter.
+            var loreWaitUntil = Time.realtimeSinceStartup + 3.5f;
+            while (Time.realtimeSinceStartup < loreWaitUntil &&
+                   !IsNarrativeOpen() &&
+                   !IsLoreChapterOpen() &&
+                   !IsArrivalOverlayVisible())
+            {
+                yield return new WaitForSecondsRealtime(0.25f);
+            }
+
+            Check("arrival did not open NarrativeFrame modal", !IsNarrativeOpen());
+            Check("arrival did not open LoreChapter modal", !IsLoreChapterOpen());
+            if (IsArrivalOverlayVisible())
+            {
+                Note("ArrivalLoreOverlay visible (non-modal) — dismissing via tap");
+                FindObjectOfType<ArrivalLoreOverlay>(true)?.Dismiss();
+                yield return new WaitForSecondsRealtime(0.5f);
+            }
+
+            yield return DismissBlockingOverlays();
+            Check("arrival lore/narrative not blocking after map.move",
+                !IsNarrativeOpen() && !IsLoreChapterOpen() && !IsNightCurtainOpen());
+
+            // player_day.end / 收工 — with remaining==0 this is the natural day-end path.
+            yield return PerformEndDayAndVerify();
+
+            // Day 2: content-agnostic second loop (same neutral probe) or health floor.
+            yield return PerformDay2LoopAndVerify();
+
+            // Overlay PNG: require non-blank when graphics exist; -nographics batch soft-skips.
+            if (HasUsableGraphics())
+            {
+                Check(
+                    "capture not blank camera clear",
+                    _captureAttempts > 0 && _blankCaptures < _captureAttempts);
+            }
+            else
+            {
+                Note("capture check soft-skipped: GraphicsDeviceType.Null (-nographics)");
+            }
+
             WriteReportAndClearMarker();
         }
 
@@ -216,19 +275,16 @@ namespace Luoxia.App
                 yield break;
             }
 
+            // Structural wait: only player_location_entity_id (labels may be logged in Notes).
             var moved = false;
             var deadline = Time.realtimeSinceStartup + 30f;
             while (Time.realtimeSinceStartup < deadline)
             {
                 var v = GetLatestView();
                 var locId = v?.player_location_entity_id ?? string.Empty;
-                var locLabel = LoreQuery.ResolveLocationLabel(v);
-                if ((!string.IsNullOrEmpty(beforeLocId) &&
-                     !string.IsNullOrEmpty(locId) &&
-                     locId != beforeLocId) ||
-                    (!string.IsNullOrEmpty(beforeLocLabel) &&
-                     !string.IsNullOrEmpty(locLabel) &&
-                     locLabel != beforeLocLabel))
+                if (!string.IsNullOrEmpty(beforeLocId) &&
+                    !string.IsNullOrEmpty(locId) &&
+                    locId != beforeLocId)
                 {
                     moved = true;
                     break;
@@ -262,6 +318,436 @@ namespace Luoxia.App
             Check("MapDestinationPanel closed after map.move", map != null && !map.IsOpen);
 
             yield return Capture("08-after-map-move.png");
+        }
+
+        private IEnumerator PerformEndDayAndVerify()
+        {
+            yield return DismissBlockingOverlays();
+
+            var before = GetLatestView();
+            var beforeDay = before?.day_cycle != null ? before.day_cycle.day : -1;
+            var beforePhase = before?.day_cycle != null ? before.day_cycle.phase ?? string.Empty : string.Empty;
+            var beforeRev = before != null ? before.view_revision : -1;
+            var beforePhaseRev = before?.day_cycle != null ? before.day_cycle.phase_revision : -1;
+            Note(
+                $"end-day before day={beforeDay} phase={beforePhase} " +
+                $"phase_revision={beforePhaseRev} view_revision={beforeRev}");
+
+            var screen = FindObjectOfType<MainWorldScreen>(true);
+            var endDay = GetSerialized<Button>(screen, "endDayButton");
+            Check("EndDayButton present", endDay != null);
+            if (endDay == null)
+            {
+                Check("player_day.end advanced day/phase or accepted view update", false);
+                Check("CommandFeedback not pending after end-day", !IsCommandFeedbackPending());
+                Check("FatalOverlay still clear after end-day",
+                    !IsOverlayBlocking(FindObjectOfType<SessionFatalOverlay>(true)));
+                yield return Capture("09-after-end-day.png");
+                yield break;
+            }
+
+            var playerPhase = before?.day_cycle == null ||
+                              before.day_cycle.PhaseEnum == DayPhase.Player;
+            Check("day_cycle is player phase (end-day allowed)", playerPhase);
+            Check("EndDayButton interactable", endDay.interactable);
+
+            if (!endDay.interactable)
+            {
+                Check("player_day.end advanced day/phase or accepted view update", false);
+                Check("CommandFeedback not pending after end-day", !IsCommandFeedbackPending());
+                Check("FatalOverlay still clear after end-day",
+                    !IsOverlayBlocking(FindObjectOfType<SessionFatalOverlay>(true)));
+                yield return Capture("09-after-end-day.png");
+                yield break;
+            }
+
+            endDay.onClick.Invoke();
+            Note("clicked EndDayButton → player_day.end (or EndDayConfirm if cards remain)");
+
+            // If available EventCards remain, confirm modal opens — force end for Accept path.
+            yield return new WaitForSecondsRealtime(0.35f);
+            var endConfirm = FindObjectOfType<EndDayConfirmPanel>(true);
+            if (endConfirm != null && endConfirm.IsOpen)
+            {
+                Note("EndDayConfirm open — clicking 仍要收工");
+                var force = GetSerialized<Button>(endConfirm, "forceEndButton");
+                Check("EndDayConfirm forceEndButton present", force != null);
+                force?.onClick.Invoke();
+                yield return new WaitForSecondsRealtime(0.35f);
+            }
+
+            var advanced = false;
+            var deadline = Time.realtimeSinceStartup + 90f;
+            while (Time.realtimeSinceStartup < deadline)
+            {
+                if (IsCommandFeedbackPending())
+                {
+                    yield return new WaitForSecondsRealtime(0.5f);
+                    continue;
+                }
+
+                var v = GetLatestView();
+                if (v == null)
+                {
+                    yield return new WaitForSecondsRealtime(0.5f);
+                    continue;
+                }
+
+                var day = v.day_cycle != null ? v.day_cycle.day : -1;
+                var phase = v.day_cycle != null ? v.day_cycle.phase ?? string.Empty : string.Empty;
+                var phaseRev = v.day_cycle != null ? v.day_cycle.phase_revision : -1;
+                var rev = v.view_revision;
+                if ((beforeDay >= 0 && day > beforeDay) ||
+                    (beforePhaseRev >= 0 && phaseRev > beforePhaseRev) ||
+                    (!string.IsNullOrEmpty(beforePhase) &&
+                     !string.IsNullOrEmpty(phase) &&
+                     phase != beforePhase) ||
+                    (beforeRev >= 0 && rev > beforeRev))
+                {
+                    advanced = true;
+                    break;
+                }
+
+                yield return new WaitForSecondsRealtime(0.5f);
+            }
+
+            yield return new WaitForSecondsRealtime(0.35f);
+            // Nightfall / phase lore must not stick.
+            yield return DismissBlockingOverlays();
+
+            var after = GetLatestView();
+            var afterDay = after?.day_cycle != null ? after.day_cycle.day : -1;
+            var afterPhase = after?.day_cycle != null ? after.day_cycle.phase ?? string.Empty : string.Empty;
+            var afterPhaseRev = after?.day_cycle != null ? after.day_cycle.phase_revision : -1;
+            var afterRev = after != null ? after.view_revision : -1;
+            Note(
+                $"end-day after day={afterDay} phase={afterPhase} " +
+                $"phase_revision={afterPhaseRev} view_revision={afterRev}");
+
+            Check(
+                "player_day.end advanced day/phase or accepted view update",
+                advanced ||
+                (beforeDay >= 0 && afterDay > beforeDay) ||
+                (beforePhaseRev >= 0 && afterPhaseRev > beforePhaseRev) ||
+                (!string.IsNullOrEmpty(beforePhase) &&
+                 !string.IsNullOrEmpty(afterPhase) &&
+                 afterPhase != beforePhase) ||
+                (beforeRev >= 0 && afterRev > beforeRev));
+            Check("CommandFeedback not pending after end-day", !IsCommandFeedbackPending());
+            Check("FatalOverlay still clear after end-day",
+                !IsOverlayBlocking(FindObjectOfType<SessionFatalOverlay>(true)));
+            Check("lore/narrative not blocking after end-day",
+                !IsNarrativeOpen() && !IsLoreChapterOpen() && !IsNightCurtainOpen());
+
+            yield return Capture("09-after-end-day.png");
+        }
+
+        /// <summary>
+        /// After end-day → day 2: re-select avatar, same neutral probe, wait for budget/card
+        /// within DialogueWaitSec. If director blocks or times out, assert SessionView health floor.
+        /// </summary>
+        private IEnumerator PerformDay2LoopAndVerify()
+        {
+            yield return DismissBlockingOverlays();
+
+            var day2 = GetLatestView();
+            var dayNum = day2?.day_cycle != null ? day2.day_cycle.day : -1;
+            var locLabel = LoreQuery.ResolveLocationLabel(day2);
+            var locId = day2?.player_location_entity_id ?? string.Empty;
+            Note(
+                $"day2 enter day={dayNum} location_label={locLabel} location_id={locId} " +
+                $"budget={(day2?.event_budget != null ? day2.event_budget.remaining + "/" + day2.event_budget.capacity : "n/a")}");
+
+            Check("day2 SessionView present", day2 != null);
+            Check("day2 FatalOverlay clear",
+                !IsOverlayBlocking(FindObjectOfType<SessionFatalOverlay>(true)));
+            Check("day2 location label from view only (non-empty)",
+                !string.IsNullOrWhiteSpace(locLabel));
+            CheckLocationHudMatchesView(day2);
+
+            FindObjectOfType<MainWorldScreen>()?.ActivateFeature(DialogueFeaturePanel.Id);
+            yield return new WaitForSecondsRealtime(0.35f);
+
+            var dialogue = FindObjectOfType<DialogueFeaturePanel>(true);
+            var inputBar = GetSerialized<CanvasGroup>(dialogue, "inputBarGroup");
+            var input = GetSerialized<InputField>(dialogue, "inputField");
+            Check("day2 dialogue InputBar visible (alpha≈1)",
+                inputBar != null && inputBar.alpha > 0.9f);
+            Check("day2 InputField present", input != null);
+
+            // If remaining already 0 after day rollover, skip probe and rely on exhausted UX check.
+            var remainBefore = day2?.event_budget != null ? day2.event_budget.remaining : -1;
+            if (remainBefore == 0)
+            {
+                Note("day2 budget remaining=0 — skipping second dialogue probe; UX covered by exhausted check");
+                yield return Capture("10-day2-health.png");
+                yield break;
+            }
+
+            ClickFirstNamedAvatar();
+            yield return new WaitForSecondsRealtime(0.7f);
+            yield return Capture("10-day2-after-avatar.png");
+
+            var baseRemain = GetLatestView()?.event_budget != null
+                ? GetLatestView().event_budget.remaining
+                : -1;
+            var baseCards = CountAvailableCards(GetLatestView());
+            var baseTurns = CountDialogueTurns(GetLatestView());
+
+            if (input != null && !input.interactable)
+            {
+                Note("day2 InputField not interactable after avatar — documenting health floor only");
+                Check("day2 SessionView still healthy when input blocked", GetLatestView() != null);
+                Check("day2 FatalOverlay clear when input blocked",
+                    !IsOverlayBlocking(FindObjectOfType<SessionFatalOverlay>(true)));
+                CheckLocationHudMatchesView(GetLatestView());
+                yield return Capture("11-day2-input-blocked.png");
+                yield break;
+            }
+
+            SendDialogueLine();
+            var cardOrBudget = false;
+            var deadline = Time.realtimeSinceStartup + DialogueWaitSec;
+            while (Time.realtimeSinceStartup < deadline)
+            {
+                var v = GetLatestView();
+                var remain = v?.event_budget != null ? v.event_budget.remaining : -1;
+                if ((baseRemain >= 0 && remain >= 0 && remain < baseRemain) ||
+                    CountAvailableCards(v) > baseCards)
+                {
+                    cardOrBudget = true;
+                    break;
+                }
+
+                if (IsCommandFeedbackPending())
+                {
+                    yield return new WaitForSecondsRealtime(0.5f);
+                    continue;
+                }
+
+                yield return new WaitForSecondsRealtime(1f);
+            }
+
+            yield return new WaitForSecondsRealtime(0.35f);
+            yield return Capture("11-day2-after-dialogue.png");
+
+            var after = GetLatestView();
+            var afterRemain = after?.event_budget != null ? after.event_budget.remaining : -1;
+            var afterCards = CountAvailableCards(after);
+            var afterTurns = CountDialogueTurns(after);
+            Note(
+                $"day2 dialogue result cardOrBudget={cardOrBudget} " +
+                $"budget {baseRemain}→{afterRemain} cards {baseCards}→{afterCards} " +
+                $"turns {baseTurns}→{afterTurns}");
+
+            Check("day2 SessionView present after probe", after != null);
+            Check("day2 FatalOverlay still clear",
+                !IsOverlayBlocking(FindObjectOfType<SessionFatalOverlay>(true)));
+            Check("day2 CommandFeedback not pending", !IsCommandFeedbackPending());
+            CheckLocationHudMatchesView(after);
+
+            if (cardOrBudget ||
+                (baseRemain >= 0 && afterRemain >= 0 && afterRemain < baseRemain) ||
+                afterCards > baseCards)
+            {
+                Check("day2 dialogue spent EventBudget or published EventCard", true);
+                Check("day2 dialogue produced turns", afterTurns > baseTurns);
+            }
+            else
+            {
+                Note(
+                    "day2 dialogue did not spend budget/card within " + DialogueWaitSec +
+                    "s — director may block or Engine rejected; asserting SessionView health floor");
+                // Soft floor: do not fail Accept solely on day2 model/director latency.
+                Check("day2 SessionView health floor after failed probe", after != null);
+                Check("day2 health floor: InputBar still present",
+                    FindObjectOfType<DialogueFeaturePanel>(true) != null &&
+                    GetSerialized<CanvasGroup>(
+                        FindObjectOfType<DialogueFeaturePanel>(true),
+                        "inputBarGroup") != null);
+                Check("day2 health floor: location label still from view",
+                    !string.IsNullOrWhiteSpace(LoreQuery.ResolveLocationLabel(after)));
+            }
+        }
+
+        private void CheckLocationHudMatchesView(SessionViewDto view)
+        {
+            var expected = LoreQuery.ResolveLocationLabel(view);
+            var widget = FindObjectOfType<LocationDayWidget>(true);
+            var hud = GetSerialized<Text>(widget, "locationText");
+            if (hud == null)
+            {
+                Check("day2 LocationDayWidget locationText present", false);
+                return;
+            }
+
+            var shown = hud.text ?? string.Empty;
+            Check(
+                "day2 LocationDayWidget matches SessionView location label",
+                !string.IsNullOrWhiteSpace(expected) &&
+                string.Equals(shown, expected, StringComparison.Ordinal));
+            Note($"location hud={shown} view={expected}");
+        }
+
+        /// <summary>
+        /// After a successful dialogue with remaining&gt;0, loop content-neutral probes
+        /// (same greeting) while rotating named avatars until remaining==0 or capacity+2 attempts.
+        /// Capacity and spend amounts come from SessionView.event_budget (pack-owned);
+        /// accept only asserts relational outcomes (remaining decreases / hits 0), never literal 4/1.
+        /// </summary>
+        private IEnumerator DrainBudgetUntilExhausted()
+        {
+            yield return DismissBlockingOverlays();
+            FindObjectOfType<MainWorldScreen>()?.ActivateFeature(DialogueFeaturePanel.Id);
+            yield return new WaitForSecondsRealtime(0.25f);
+
+            var view = GetLatestView();
+            var remain = view?.event_budget != null ? view.event_budget.remaining : -1;
+            // Pack-owned capacity from view — never hardcode Guyandu/Riverside daily_capacity.
+            var capacity = view?.event_budget != null ? view.event_budget.capacity : -1;
+            if (remain < 0 || capacity < 0)
+            {
+                Check("drained event_budget to remaining=0", false);
+                Note("budget drain aborted: event_budget missing");
+                yield break;
+            }
+
+            if (remain == 0)
+            {
+                Note("budget already remaining=0 after first dialogue — drain skipped");
+                Check("drained event_budget to remaining=0", true);
+                yield break;
+            }
+
+            var maxAttempts = capacity + 2;
+            var attempts = 0;
+            var avatarCursor = 0;
+            Note(
+                $"budget drain start remaining={remain}/{capacity} maxAttempts={maxAttempts}");
+
+            while (remain > 0 && attempts < maxAttempts)
+            {
+                attempts++;
+                yield return DismissBlockingOverlays();
+                FindObjectOfType<MainWorldScreen>()?.ActivateFeature(DialogueFeaturePanel.Id);
+                yield return new WaitForSecondsRealtime(0.2f);
+
+                if (!TryClickNamedAvatarAt(ref avatarCursor))
+                {
+                    Note($"drain attempt {attempts}: no named avatar — aborting drain");
+                    break;
+                }
+
+                yield return new WaitForSecondsRealtime(0.55f);
+
+                var dialogue = FindObjectOfType<DialogueFeaturePanel>(true);
+                var input = GetSerialized<InputField>(dialogue, "inputField");
+                var send = GetSerialized<Button>(dialogue, "sendButton");
+                if (input == null || send == null || !input.interactable || !send.interactable)
+                {
+                    Note(
+                        $"drain attempt {attempts}: send controls blocked " +
+                        $"(input={(input != null && input.interactable)} " +
+                        $"send={(send != null && send.interactable)}) — rotate avatar");
+                    continue;
+                }
+
+                var baseRemain = remain;
+                var baseCards = CountAvailableCards(GetLatestView());
+                SendDialogueLineQuiet();
+
+                var spent = false;
+                var deadline = Time.realtimeSinceStartup + DialogueWaitSec;
+                while (Time.realtimeSinceStartup < deadline)
+                {
+                    if (IsCommandFeedbackPending())
+                    {
+                        yield return new WaitForSecondsRealtime(0.5f);
+                        continue;
+                    }
+
+                    var v = GetLatestView();
+                    var r = v?.event_budget != null ? v.event_budget.remaining : -1;
+                    if (r >= 0 && r < baseRemain)
+                    {
+                        spent = true;
+                        remain = r;
+                        break;
+                    }
+
+                    // Card publish without budget drop is not progress for drain.
+                    if (CountAvailableCards(v) > baseCards)
+                    {
+                        Note(
+                            $"drain attempt {attempts}: card published without budget drop " +
+                            $"(remain still {r})");
+                    }
+
+                    yield return new WaitForSecondsRealtime(1f);
+                }
+
+                remain = GetLatestView()?.event_budget != null
+                    ? GetLatestView().event_budget.remaining
+                    : remain;
+                Note(
+                    $"drain attempt {attempts}/{maxAttempts} spent={spent} " +
+                    $"remaining={remain}/{capacity}");
+
+                if (!spent && remain > 0)
+                {
+                    Note($"drain attempt {attempts}: no spend within {DialogueWaitSec}s — next avatar");
+                }
+
+                yield return new WaitForSecondsRealtime(0.25f);
+            }
+
+            Check("drained event_budget to remaining=0", remain == 0);
+            Note(
+                $"budget drain done probes={attempts} remaining={remain}/{capacity} " +
+                $"(cap={maxAttempts})");
+        }
+
+        /// <summary>
+        /// Hard assert after drain: 收工 placeholder, blocked input/send, EndDay still usable.
+        /// </summary>
+        private void AssertBudgetExhaustedUx()
+        {
+            FindObjectOfType<MainWorldScreen>()?.ActivateFeature(DialogueFeaturePanel.Id);
+            var view = GetLatestView();
+            var remain = view?.event_budget != null ? view.event_budget.remaining : -1;
+            Check("budget-exhausted remaining==0", remain == 0);
+
+            var dialogue = FindObjectOfType<DialogueFeaturePanel>(true);
+            var placeholder = GetSerialized<Text>(dialogue, "inputPlaceholder");
+            var input = GetSerialized<InputField>(dialogue, "inputField");
+            var send = GetSerialized<Button>(dialogue, "sendButton");
+            var ph = placeholder != null ? placeholder.text ?? string.Empty : string.Empty;
+            Check(
+                "budget-exhausted placeholder shows 收工 guidance",
+                ph.Contains("收工") || ph.Contains("行动力已尽"));
+            Check(
+                "budget-exhausted InputField not interactable OR send blocked",
+                (input != null && !input.interactable) || (send != null && !send.interactable));
+            Check("FatalOverlay clear at budget exhausted",
+                !IsOverlayBlocking(FindObjectOfType<SessionFatalOverlay>(true)));
+            Check("CommandFeedback not pending at budget exhausted", !IsCommandFeedbackPending());
+
+            var screen = FindObjectOfType<MainWorldScreen>(true);
+            var endDay = GetSerialized<Button>(screen, "endDayButton");
+            Check("EndDayButton present at budget exhausted", endDay != null);
+            Check("EndDayButton interactable at budget exhausted (可收工)",
+                endDay != null && endDay.interactable);
+            var endDayImg = GetSerialized<Image>(screen, "endDayButtonImage");
+            if (endDayImg != null)
+            {
+                Check(
+                    "EndDay primary chrome when remaining=0",
+                    endDayImg.color.r > 0.5f && endDayImg.color.g > 0.3f);
+            }
+
+            var mapBtn = GetSerialized<Button>(screen, "mapButton");
+            Check("map still enabled at budget exhausted", mapBtn != null && mapBtn.interactable);
+            Note("budget-exhausted UX at remaining=0 placeholder=" + ph);
         }
 
         private bool TryClickFirstNonCurrentMapDestination()
@@ -314,6 +800,13 @@ namespace Luoxia.App
         {
             // Avoid WaitForEndOfFrame in batchmode (can hang with no presenter).
             yield return null;
+
+            if (!HasUsableGraphics())
+            {
+                Note($"capture {fileName}: soft-skip (null graphics / -nographics)");
+                yield break;
+            }
+
             var absolutePath = Path.Combine(ArtifactRoot(), fileName);
             Directory.CreateDirectory(Path.GetDirectoryName(absolutePath) ?? ".");
             if (File.Exists(absolutePath))
@@ -684,6 +1177,11 @@ namespace Luoxia.App
             public float PlaneDistance;
         }
 
+        private static bool HasUsableGraphics()
+        {
+            return SystemInfo.graphicsDeviceType != UnityEngine.Rendering.GraphicsDeviceType.Null;
+        }
+
         private void WriteReportAndClearMarker()
         {
             var root = ArtifactRoot();
@@ -739,35 +1237,55 @@ namespace Luoxia.App
 
         private void ClickFirstNamedAvatar()
         {
+            var cursor = 0;
+            var clicked = TryClickNamedAvatarAt(ref cursor);
+            Check("clicked a named AvatarRail item", clicked);
+        }
+
+        /// <summary>
+        /// Click a named AvatarRail item by rotating cursor (wrap). Advances cursor on success.
+        /// Content-agnostic — does not assert display names.
+        /// </summary>
+        private bool TryClickNamedAvatarAt(ref int cursor)
+        {
             var items = FindObjectsOfType<AvatarRailItemView>(true);
-            Button fallback = null;
-            Button clicked = null;
+            if (items == null || items.Length == 0)
+            {
+                return false;
+            }
+
+            var named = new List<Button>();
             for (var i = 0; i < items.Length; i++)
             {
                 var name = GetSerialized<Text>(items[i], "nameText");
-                var portrait = GetSerialized<Image>(items[i], "portraitImage");
                 var btn = GetSerialized<Button>(items[i], "selectButton");
                 if (btn == null || name == null || string.IsNullOrWhiteSpace(name.text))
                 {
                     continue;
                 }
 
-                fallback ??= btn;
-                if (portrait != null && portrait.sprite != null && portrait.color.r > 0.85f)
-                {
-                    btn.onClick.Invoke();
-                    clicked = btn;
-                    break;
-                }
+                named.Add(btn);
             }
 
-            if (clicked == null && fallback != null)
+            if (named.Count == 0)
             {
-                fallback.onClick.Invoke();
-                clicked = fallback;
+                return false;
             }
 
-            Check("clicked a named AvatarRail item", clicked != null);
+            if (cursor < 0)
+            {
+                cursor = 0;
+            }
+
+            var index = cursor % named.Count;
+            var picked = named[index];
+            var label = picked.GetComponentInChildren<Text>(true);
+            picked.onClick.Invoke();
+            cursor = index + 1;
+            Note(
+                $"selected named avatar index={index}/{named.Count} " +
+                $"label={(label != null ? label.text : "?")}");
+            return true;
         }
 
         private void CheckDialogueInputAndPortrait()
@@ -843,10 +1361,29 @@ namespace Luoxia.App
                 return;
             }
 
-            input.text = "今日可有盐镖消息？";
+            // Content-neutral greeting — any NPC can answer; no pack-specific probes.
+            input.text = "在下初来乍到，此地可有什么要紧事？";
             Check("inputField interactable before send", input.interactable);
             send.onClick.Invoke();
-            Note("sent dialogue line via InputField+SendButton");
+            Note("sent content-neutral dialogue probe via InputField+SendButton");
+        }
+
+        /// <summary>Drain-loop send: same neutral greeting, no Check spam.</summary>
+        private void SendDialogueLineQuiet()
+        {
+            FindObjectOfType<MainWorldScreen>()?.ActivateFeature(DialogueFeaturePanel.Id);
+            var dialogue = FindObjectOfType<DialogueFeaturePanel>(true);
+            var input = GetSerialized<InputField>(dialogue, "inputField");
+            var send = GetSerialized<Button>(dialogue, "sendButton");
+            if (input == null || send == null)
+            {
+                Note("drain send aborted: controls missing");
+                return;
+            }
+
+            input.text = "在下初来乍到，此地可有什么要紧事？";
+            send.onClick.Invoke();
+            Note("drain: sent content-neutral dialogue probe");
         }
 
         private void CheckEventPage()
@@ -920,6 +1457,87 @@ namespace Luoxia.App
             }
 
             Note($"narrative dismiss clicks={clicks} open={IsNarrativeOpen()}");
+        }
+
+        private IEnumerator DismissLoreChapterUntilClosed()
+        {
+            if (!IsLoreChapterOpen())
+            {
+                yield break;
+            }
+
+            var deadline = Time.realtimeSinceStartup + 45f;
+            var clicks = 0;
+            while (Time.realtimeSinceStartup < deadline && IsLoreChapterOpen())
+            {
+                var lore = FindObjectOfType<LoreChapterOverlay>(true);
+                var advance = GetSerialized<Button>(lore, "advanceButton");
+                if (advance == null)
+                {
+                    Note("lore chapter advance button missing — cannot dismiss");
+                    yield break;
+                }
+
+                advance.onClick.Invoke();
+                clicks++;
+                yield return new WaitForSecondsRealtime(0.45f);
+            }
+
+            Note($"lore chapter dismiss clicks={clicks} open={IsLoreChapterOpen()}");
+        }
+
+        private IEnumerator DismissBlockingOverlays()
+        {
+            yield return DismissNarrativeUntilClosed();
+            yield return DismissLoreChapterUntilClosed();
+            yield return DismissNightCurtainUntilClosed();
+        }
+
+        private IEnumerator DismissNightCurtainUntilClosed()
+        {
+            if (!IsNightCurtainOpen())
+            {
+                yield break;
+            }
+
+            var deadline = Time.realtimeSinceStartup + 20f;
+            var clicks = 0;
+            while (Time.realtimeSinceStartup < deadline && IsNightCurtainOpen())
+            {
+                var night = FindObjectOfType<NightCurtainOverlay>(true);
+                var advance = GetSerialized<Button>(night, "advanceButton");
+                if (advance != null)
+                {
+                    advance.onClick.Invoke();
+                    clicks++;
+                }
+                else
+                {
+                    night?.ClearAndClose();
+                }
+
+                yield return new WaitForSecondsRealtime(0.5f);
+            }
+
+            Note($"night curtain dismiss clicks={clicks} open={IsNightCurtainOpen()}");
+        }
+
+        private bool IsLoreChapterOpen()
+        {
+            var lore = FindObjectOfType<LoreChapterOverlay>(true);
+            return lore != null && lore.IsOpen;
+        }
+
+        private bool IsArrivalOverlayVisible()
+        {
+            var arrival = FindObjectOfType<ArrivalLoreOverlay>(true);
+            return arrival != null && arrival.IsVisible;
+        }
+
+        private bool IsNightCurtainOpen()
+        {
+            var night = FindObjectOfType<NightCurtainOverlay>(true);
+            return night != null && night.IsOpen;
         }
 
         private bool IsCommandFeedbackPending()

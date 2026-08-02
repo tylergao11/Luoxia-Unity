@@ -7,7 +7,8 @@ using UnityEngine.UI;
 namespace Luoxia.UI.Features
 {
     /// <summary>
-    /// Event tab: available EventCards. Trigger goes through IPlayerIntentSink only.
+    /// Event tab: available EventCards. Row/开启 opens local confirm modal;
+    /// 全部开启 still triggers through IPlayerIntentSink only.
     /// </summary>
     public sealed class EventFeaturePanel : FeaturePanel
     {
@@ -19,14 +20,32 @@ namespace Luoxia.UI.Features
         [SerializeField] private Transform contentRoot;
         [SerializeField] private Text headerCountText;
         [SerializeField] private Button openAllButton;
+        [SerializeField] private EventCardConfirmPanel confirmPanel;
         [SerializeField] private string countFormat = "待开启 {0} 件";
 
         private ListViewController<EventCardItemModel, EventCardItemView> _list;
         private IPlayerIntentSink _intents;
+        private bool _commandInteractable = true;
+        private int _availableCount;
 
-        public void Configure(IPlayerIntentSink intents)
+        public void Configure(IPlayerIntentSink intents, EventCardConfirmPanel confirm = null)
         {
             _intents = intents;
+            if (confirm != null)
+            {
+                confirmPanel = confirm;
+            }
+        }
+
+        public void SetCommandInteractable(bool interactable)
+        {
+            _commandInteractable = interactable;
+            if (openAllButton != null)
+            {
+                openAllButton.interactable = _commandInteractable && _availableCount > 0;
+            }
+
+            ApplyOpenHandlers();
         }
 
         protected override void Awake()
@@ -77,16 +96,16 @@ namespace Luoxia.UI.Features
                     models.Add(new EventCardItemModel
                     {
                         Card = card,
-                        SourceLabel = "来源: 世界"
+                        SourceLabel = string.Empty,
+                        Portrait = null
                     });
                 }
             }
 
+            _availableCount = models.Count;
             _list.SetItems(models);
-            for (var i = 0; i < _list.ActiveItems.Count; i++)
-            {
-                _list.ActiveItems[i].SetOpenHandler(HandleOpenOne);
-            }
+            ApplyOpenHandlers();
+            confirmPanel?.OnSessionView(view);
 
             if (headerCountText != null)
             {
@@ -95,17 +114,53 @@ namespace Luoxia.UI.Features
 
             if (openAllButton != null)
             {
-                openAllButton.interactable = models.Count > 0;
+                openAllButton.interactable = _commandInteractable && models.Count > 0;
+            }
+        }
+
+        private void ApplyOpenHandlers()
+        {
+            if (_list == null)
+            {
+                return;
+            }
+
+            for (var i = 0; i < _list.ActiveItems.Count; i++)
+            {
+                _list.ActiveItems[i].SetOpenHandler(_commandInteractable ? HandleOpenOne : null);
             }
         }
 
         private void HandleOpenOne(string eventCardId)
         {
-            _intents?.TryTriggerEventCard(eventCardId);
+            if (!_commandInteractable)
+            {
+                return;
+            }
+
+            if (confirmPanel == null)
+            {
+                Debug.LogError(
+                    "[EventFeaturePanel] EventCardConfirmPanel missing. Rebuild via Luoxia/UI/Build Main World Screen.");
+                return;
+            }
+
+            var view = LatestView;
+            if (view == null)
+            {
+                return;
+            }
+
+            confirmPanel.TryOpen(view, eventCardId);
         }
 
         private void HandleOpenAll()
         {
+            if (!_commandInteractable)
+            {
+                return;
+            }
+
             _intents?.TryTriggerAllAvailableEventCards();
         }
     }

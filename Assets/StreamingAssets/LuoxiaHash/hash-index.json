@@ -1,0 +1,302 @@
+{
+  "schema_version": 1,
+  "version": 1,
+  "entries": {
+    "64e68ec8375ff6fc5becfa3a6dc7f739f5d5522b863212d2df95df1d2bddeba0": "files/64e68ec8375ff6fc5becfa3a6dc7f739f5d5522b863212d2df95df1d2bddeba0.svg",
+    "2677428b305b96a4987ad22c28c90f123f49bd37048156477b7725bede19a5ad": "files/2677428b305b96a4987ad22c28c90f123f49bd37048156477b7725bede19a5ad.png",
+    "077a9a4dee8f9dc37b83a4da84cb806833a5bd8aa9aefea75b770759953e1f51": "files/077a9a4dee8f9dc37b83a4da84cb806833a5bd8aa9aefea75b770759953e1f51.png",
+    "8f730e218ef5c9d5bee61fb1fc097046141892e0c97c8f326e6d0193d4b96c9a": "files/8f730e218ef5c9d5bee61fb1fc097046141892e0c97c8f326e6d0193d4b96c9a.png",
+    "f7681c3f5d68f84d7f1c2e5f361b78464e9dfa881391bf444771d42f06291a35": "files/f7681c3f5d68f84d7f1c2e5f361b78464e9dfa881391bf444771d42f06291a35.png",
+    "c469485ff1820725b80414dcfc612436f450c8c2c662c7abebb9cdae618aa49c": "files/c469485ff1820725b80414dcfc612436f450c8c2c662c7abebb9cdae618aa49c.png",
+    "56181a703201c845740730c66cd668a5f58d729d4138abdf7aba20c694b2c65c": "files/56181a703201c845740730c66cd668a5f58d729d4138abdf7aba20c694b2c65c.png",
+    "344f858a2ddce53a9263ea83e37639320bc27f1878c03aadbedd509b898fcec3": "files/344f858a2ddce53a9263ea83e37639320bc27f1878c03aadbedd509b898fcec3.png",
+    "d9781ec9635c8e38315e00b391f625e50530e3a5ae96accb8c98fbdc721c3f70": "files/d9781ec9635c8e38315e00b391f625e50530e3a5ae96accb8c98fbdc721c3f70.png",
+    "a36a5774cf86ed45b0f46a91a9d9c6ad18cb226cbb430eaa1de7574f732a33dc": "files/a36a5774cf86ed45b0f46a91a9d9c6ad18cb226cbb430eaa1de7574f732a33dc.png",
+    "8a7a00326a17ed84d1da0166eb327b8300f9393c38bd1995144b0f3f078f824a": "files/8a7a00326a17ed84d1da0166eb327b8300f9393c38bd1995144b0f3f078f824a.png",
+    "618f9ef41a1f37e470d6ebd5455d3bf92118ec4ab58c123f423401cac6157ba4": "files/618f9ef41a1f37e470d6ebd5455d3bf92118ec4ab58c123f423401cac6157ba4.png",
+    "914e58b09a1a6d190fe8764f7dc55c09cbd3d88559c9174b394d8175bbc63ec5": "files/914e58b09a1a6d190fe8764f7dc55c09cbd3d88559c9174b394d8175bbc63ec5.png",
+    "d1555966f2eab6c0acbff18ad686ab7a39f7504761452a09b7def2a06d778302": "files/d1555966f2eab6c0acbff18ad686ab7a39f7504761452a09b7def2a06d778302.png",
+    "b68e4e29b8fd5f5b5a059437a9eae74d3a35992c9c2e4025919833c10c1f8dd4": "files/b68e4e29b8fd5f5b5a059437a9eae74d3a35992c9c2e4025919833c10c1f8dd4.png",
+    "cd3b946b95ae1d04672559242453e6f0812bd099e383f07296ab3e2e0deaca82": "files/cd3b946b95ae1d04672559242453e6f0812bd099e383f07296ab3e2e0deaca82.png",
+    "76dc5b13566b6e6c0ae2942ddaedb0e2758e5eef1618a455c097dc2a70cfe354": "files/76dc5b13566b6e6c0ae2942ddaedb0e2758e5eef1618a455c097dc2a70cfe354.png",
+    "b94ec6d1fbd9d1d424f4e07ed475c246842dc63a49543a8d75caf3db96190178": "files/b94ec6d1fbd9d1d424f4e07ed475c246842dc63a49543a8d75caf3db96190178.png",
+    "49e7e5efef8ba74dbf226a708e77e2de2dc196f26e276dd4e7c44ba5c494ca7a": "files/49e7e5efef8ba74dbf226a708e77e2de2dc196f26e276dd4e7c44ba5c494ca7a.png",
+    "99b20a23db450030ad8e1241861bd1dfeb33eb467ff9f34ad661652a89fea3ca": "files/99b20a23db450030ad8e1241861bd1dfeb33eb467ff9f34ad661652a89fea3ca.png",
+    "847a2517da52a341f578953291e0e3f2a8f9ae9fd7c65ef03b53fc52331b9f0d": "files/847a2517da52a341f578953291e0e3f2a8f9ae9fd7c65ef03b53fc52331b9f0d.png",
+    "4394152e26232e67b3160e7c88a3547313d8bde00e6032625692d0484837b061": "files/4394152e26232e67b3160e7c88a3547313d8bde00e6032625692d0484837b061.png",
+    "5121121ed9fa187db2dfe74d15456bad68966de6f605b53c902a0b68d37269c2": "files/5121121ed9fa187db2dfe74d15456bad68966de6f605b53c902a0b68d37269c2.png",
+    "7bd08b94ffba8214c97223f380503044e210684eb986d4552410f9aad996efb0": "files/7bd08b94ffba8214c97223f380503044e210684eb986d4552410f9aad996efb0.png",
+    "d878f94d1f6b89dc31429db186eadd1125e040f998085099ed197bc40d6d531a": "files/d878f94d1f6b89dc31429db186eadd1125e040f998085099ed197bc40d6d531a.png",
+    "bf442ae4a57c96dfa89a7472f4322bd7fe4e90ba74d9cb1ad2e3133450d1f3c4": "files/bf442ae4a57c96dfa89a7472f4322bd7fe4e90ba74d9cb1ad2e3133450d1f3c4.png",
+    "47f77bf3056fd30662b4af680cb2efda714521d7acbb69924b3f7641874f0b72": "files/47f77bf3056fd30662b4af680cb2efda714521d7acbb69924b3f7641874f0b72.png",
+    "3f4018d6ea9ce3ace65ba6485178f0b8b24e7290a7be041473e8b66b99099a14": "files/3f4018d6ea9ce3ace65ba6485178f0b8b24e7290a7be041473e8b66b99099a14.png",
+    "864ab5ace55317b2b251ad86233de8382e36385d3eb5d8262f45e2a626b4c900": "files/864ab5ace55317b2b251ad86233de8382e36385d3eb5d8262f45e2a626b4c900.png",
+    "6ceb823209a89ddd08b333d41b29ac137949b91851ea1b35162e94b7b01b4abd": "files/6ceb823209a89ddd08b333d41b29ac137949b91851ea1b35162e94b7b01b4abd.png",
+    "2b774bbf92e405a0c7a027e7df47152561fc5a572577a1e545e0abd713d93fc0": "files/2b774bbf92e405a0c7a027e7df47152561fc5a572577a1e545e0abd713d93fc0.png",
+    "eb8574abd5658c2117c0ca7f1d56bfd6fa7ae0db8212c82e25bf8ebec0817dca": "files/eb8574abd5658c2117c0ca7f1d56bfd6fa7ae0db8212c82e25bf8ebec0817dca.png",
+    "4deffadc28a90b7ddcdb2861efe25838d0bb3c8c81b7e9ad58a30f789915687f": "files/4deffadc28a90b7ddcdb2861efe25838d0bb3c8c81b7e9ad58a30f789915687f.png",
+    "588d8dd4f45f5c01f069226a3a9d1ad43f68cd8a79698d7c1b6afacdae95a5d2": "files/588d8dd4f45f5c01f069226a3a9d1ad43f68cd8a79698d7c1b6afacdae95a5d2.png",
+    "b52e6859c4ec25b372cdbc0329627a60f7e05f45e1989bcaf0e3da9af1a0a599": "files/b52e6859c4ec25b372cdbc0329627a60f7e05f45e1989bcaf0e3da9af1a0a599.png",
+    "4cbf9601f222e9021fc9ce2640b8d28fa09b0529360577089da52ccd5a0a3909": "files/4cbf9601f222e9021fc9ce2640b8d28fa09b0529360577089da52ccd5a0a3909.png",
+    "dad05a6ddd5d5774c77cfae0b3ca7db01ee8c87a75f69ff08e6cb4855ead535a": "files/dad05a6ddd5d5774c77cfae0b3ca7db01ee8c87a75f69ff08e6cb4855ead535a.png",
+    "d32b839f457412897f1726c75763d9dcc86d96f3c733bbcd848ce59031d5104a": "files/d32b839f457412897f1726c75763d9dcc86d96f3c733bbcd848ce59031d5104a.png",
+    "70d99eec1b8cf3666a98415ac54a9ceed0cf87a1d6afd70b9b9b3781b9cd3afb": "files/70d99eec1b8cf3666a98415ac54a9ceed0cf87a1d6afd70b9b9b3781b9cd3afb.png",
+    "b7fd10d60c7c1a14327887b449c9fd96834042bdff9a2c52095bf1701f228a38": "files/b7fd10d60c7c1a14327887b449c9fd96834042bdff9a2c52095bf1701f228a38.png",
+    "78aedb2f107bd178d02c1444af5b906b55f3f53976d1c8bf4e82c9a893109c2c": "files/78aedb2f107bd178d02c1444af5b906b55f3f53976d1c8bf4e82c9a893109c2c.png",
+    "80faade173f6ee060caeaa3bea053f6ce56eee3e0bdc7deb2854a5f225c26a15": "files/80faade173f6ee060caeaa3bea053f6ce56eee3e0bdc7deb2854a5f225c26a15.png"
+  },
+  "entry_list": [
+    {
+      "content_hash": "64e68ec8375ff6fc5becfa3a6dc7f739f5d5522b863212d2df95df1d2bddeba0",
+      "relative_path": "files/64e68ec8375ff6fc5becfa3a6dc7f739f5d5522b863212d2df95df1d2bddeba0.svg",
+      "media_type": "image/svg+xml",
+      "asset_id": "guyandu_ink_window"
+    },
+    {
+      "content_hash": "2677428b305b96a4987ad22c28c90f123f49bd37048156477b7725bede19a5ad",
+      "relative_path": "files/2677428b305b96a4987ad22c28c90f123f49bd37048156477b7725bede19a5ad.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_scene_loc_guyan_station_v1"
+    },
+    {
+      "content_hash": "077a9a4dee8f9dc37b83a4da84cb806833a5bd8aa9aefea75b770759953e1f51",
+      "relative_path": "files/077a9a4dee8f9dc37b83a4da84cb806833a5bd8aa9aefea75b770759953e1f51.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_scene_loc_lao_dukou_v1"
+    },
+    {
+      "content_hash": "8f730e218ef5c9d5bee61fb1fc097046141892e0c97c8f326e6d0193d4b96c9a",
+      "relative_path": "files/8f730e218ef5c9d5bee61fb1fc097046141892e0c97c8f326e6d0193d4b96c9a.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_scene_loc_tieyan_biaoju_v1"
+    },
+    {
+      "content_hash": "f7681c3f5d68f84d7f1c2e5f361b78464e9dfa881391bf444771d42f06291a35",
+      "relative_path": "files/f7681c3f5d68f84d7f1c2e5f361b78464e9dfa881391bf444771d42f06291a35.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_scene_loc_tingfeng_waiyuan_v1"
+    },
+    {
+      "content_hash": "c469485ff1820725b80414dcfc612436f450c8c2c662c7abebb9cdae618aa49c",
+      "relative_path": "files/c469485ff1820725b80414dcfc612436f450c8c2c662c7abebb9cdae618aa49c.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_scene_loc_wanghu_lou_v1"
+    },
+    {
+      "content_hash": "56181a703201c845740730c66cd668a5f58d729d4138abdf7aba20c694b2c65c",
+      "relative_path": "files/56181a703201c845740730c66cd668a5f58d729d4138abdf7aba20c694b2c65c.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_scene_world_default_v1"
+    },
+    {
+      "content_hash": "344f858a2ddce53a9263ea83e37639320bc27f1878c03aadbedd509b898fcec3",
+      "relative_path": "files/344f858a2ddce53a9263ea83e37639320bc27f1878c03aadbedd509b898fcec3.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_portrait_npc_a_luo_v1"
+    },
+    {
+      "content_hash": "d9781ec9635c8e38315e00b391f625e50530e3a5ae96accb8c98fbdc721c3f70",
+      "relative_path": "files/d9781ec9635c8e38315e00b391f625e50530e3a5ae96accb8c98fbdc721c3f70.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_portrait_npc_cen_tiexiu_v1"
+    },
+    {
+      "content_hash": "a36a5774cf86ed45b0f46a91a9d9c6ad18cb226cbb430eaa1de7574f732a33dc",
+      "relative_path": "files/a36a5774cf86ed45b0f46a91a9d9c6ad18cb226cbb430eaa1de7574f732a33dc.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_portrait_npc_helan_ying_v1"
+    },
+    {
+      "content_hash": "8a7a00326a17ed84d1da0166eb327b8300f9393c38bd1995144b0f3f078f824a",
+      "relative_path": "files/8a7a00326a17ed84d1da0166eb327b8300f9393c38bd1995144b0f3f078f824a.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_portrait_npc_liu_fubai_v1"
+    },
+    {
+      "content_hash": "618f9ef41a1f37e470d6ebd5455d3bf92118ec4ab58c123f423401cac6157ba4",
+      "relative_path": "files/618f9ef41a1f37e470d6ebd5455d3bf92118ec4ab58c123f423401cac6157ba4.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_portrait_npc_meng_jiuniang_v1"
+    },
+    {
+      "content_hash": "914e58b09a1a6d190fe8764f7dc55c09cbd3d88559c9174b394d8175bbc63ec5",
+      "relative_path": "files/914e58b09a1a6d190fe8764f7dc55c09cbd3d88559c9174b394d8175bbc63ec5.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_portrait_npc_pei_zhao_v1"
+    },
+    {
+      "content_hash": "d1555966f2eab6c0acbff18ad686ab7a39f7504761452a09b7def2a06d778302",
+      "relative_path": "files/d1555966f2eab6c0acbff18ad686ab7a39f7504761452a09b7def2a06d778302.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_portrait_npc_shen_qingwu_v1"
+    },
+    {
+      "content_hash": "b68e4e29b8fd5f5b5a059437a9eae74d3a35992c9c2e4025919833c10c1f8dd4",
+      "relative_path": "files/b68e4e29b8fd5f5b5a059437a9eae74d3a35992c9c2e4025919833c10c1f8dd4.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_portrait_npc_xue_wuyi_v1"
+    },
+    {
+      "content_hash": "cd3b946b95ae1d04672559242453e6f0812bd099e383f07296ab3e2e0deaca82",
+      "relative_path": "files/cd3b946b95ae1d04672559242453e6f0812bd099e383f07296ab3e2e0deaca82.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_portrait_player_station_clerk_v1"
+    },
+    {
+      "content_hash": "76dc5b13566b6e6c0ae2942ddaedb0e2758e5eef1618a455c097dc2a70cfe354",
+      "relative_path": "files/76dc5b13566b6e6c0ae2942ddaedb0e2758e5eef1618a455c097dc2a70cfe354.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_portrait_system_gengfu_v1"
+    },
+    {
+      "content_hash": "b94ec6d1fbd9d1d424f4e07ed475c246842dc63a49543a8d75caf3db96190178",
+      "relative_path": "files/b94ec6d1fbd9d1d424f4e07ed475c246842dc63a49543a8d75caf3db96190178.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_avatar_npc_a_luo_v1"
+    },
+    {
+      "content_hash": "49e7e5efef8ba74dbf226a708e77e2de2dc196f26e276dd4e7c44ba5c494ca7a",
+      "relative_path": "files/49e7e5efef8ba74dbf226a708e77e2de2dc196f26e276dd4e7c44ba5c494ca7a.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_avatar_npc_cen_tiexiu_v1"
+    },
+    {
+      "content_hash": "99b20a23db450030ad8e1241861bd1dfeb33eb467ff9f34ad661652a89fea3ca",
+      "relative_path": "files/99b20a23db450030ad8e1241861bd1dfeb33eb467ff9f34ad661652a89fea3ca.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_avatar_npc_helan_ying_v1"
+    },
+    {
+      "content_hash": "847a2517da52a341f578953291e0e3f2a8f9ae9fd7c65ef03b53fc52331b9f0d",
+      "relative_path": "files/847a2517da52a341f578953291e0e3f2a8f9ae9fd7c65ef03b53fc52331b9f0d.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_avatar_npc_liu_fubai_v1"
+    },
+    {
+      "content_hash": "4394152e26232e67b3160e7c88a3547313d8bde00e6032625692d0484837b061",
+      "relative_path": "files/4394152e26232e67b3160e7c88a3547313d8bde00e6032625692d0484837b061.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_avatar_npc_meng_jiuniang_v1"
+    },
+    {
+      "content_hash": "5121121ed9fa187db2dfe74d15456bad68966de6f605b53c902a0b68d37269c2",
+      "relative_path": "files/5121121ed9fa187db2dfe74d15456bad68966de6f605b53c902a0b68d37269c2.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_avatar_npc_pei_zhao_v1"
+    },
+    {
+      "content_hash": "7bd08b94ffba8214c97223f380503044e210684eb986d4552410f9aad996efb0",
+      "relative_path": "files/7bd08b94ffba8214c97223f380503044e210684eb986d4552410f9aad996efb0.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_avatar_npc_shen_qingwu_v1"
+    },
+    {
+      "content_hash": "d878f94d1f6b89dc31429db186eadd1125e040f998085099ed197bc40d6d531a",
+      "relative_path": "files/d878f94d1f6b89dc31429db186eadd1125e040f998085099ed197bc40d6d531a.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_avatar_npc_xue_wuyi_v1"
+    },
+    {
+      "content_hash": "bf442ae4a57c96dfa89a7472f4322bd7fe4e90ba74d9cb1ad2e3133450d1f3c4",
+      "relative_path": "files/bf442ae4a57c96dfa89a7472f4322bd7fe4e90ba74d9cb1ad2e3133450d1f3c4.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_avatar_player_station_clerk_v1"
+    },
+    {
+      "content_hash": "47f77bf3056fd30662b4af680cb2efda714521d7acbb69924b3f7641874f0b72",
+      "relative_path": "files/47f77bf3056fd30662b4af680cb2efda714521d7acbb69924b3f7641874f0b72.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_avatar_system_gengfu_v1"
+    },
+    {
+      "content_hash": "3f4018d6ea9ce3ace65ba6485178f0b8b24e7290a7be041473e8b66b99099a14",
+      "relative_path": "files/3f4018d6ea9ce3ace65ba6485178f0b8b24e7290a7be041473e8b66b99099a14.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_prop_baiyao_ling_v1"
+    },
+    {
+      "content_hash": "864ab5ace55317b2b251ad86233de8382e36385d3eb5d8262f45e2a626b4c900",
+      "relative_path": "files/864ab5ace55317b2b251ad86233de8382e36385d3eb5d8262f45e2a626b4c900.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_prop_duanlan_dao_v1"
+    },
+    {
+      "content_hash": "6ceb823209a89ddd08b333d41b29ac137949b91851ea1b35162e94b7b01b4abd",
+      "relative_path": "files/6ceb823209a89ddd08b333d41b29ac137949b91851ea1b35162e94b7b01b4abd.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_prop_huodan_v1"
+    },
+    {
+      "content_hash": "2b774bbf92e405a0c7a027e7df47152561fc5a572577a1e545e0abd713d93fc0",
+      "relative_path": "files/2b774bbf92e405a0c7a027e7df47152561fc5a572577a1e545e0abd713d93fc0.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_prop_tuixingshu_v1"
+    },
+    {
+      "content_hash": "eb8574abd5658c2117c0ca7f1d56bfd6fa7ae0db8212c82e25bf8ebec0817dca",
+      "relative_path": "files/eb8574abd5658c2117c0ca7f1d56bfd6fa7ae0db8212c82e25bf8ebec0817dca.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_prop_xinke_xin_v1"
+    },
+    {
+      "content_hash": "4deffadc28a90b7ddcdb2861efe25838d0bb3c8c81b7e9ad58a30f789915687f",
+      "relative_path": "files/4deffadc28a90b7ddcdb2861efe25838d0bb3c8c81b7e9ad58a30f789915687f.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_prop_yanxiang_v1"
+    },
+    {
+      "content_hash": "588d8dd4f45f5c01f069226a3a9d1ad43f68cd8a79698d7c1b6afacdae95a5d2",
+      "relative_path": "files/588d8dd4f45f5c01f069226a3a9d1ad43f68cd8a79698d7c1b6afacdae95a5d2.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_prop_yaolan_v1"
+    },
+    {
+      "content_hash": "b52e6859c4ec25b372cdbc0329627a60f7e05f45e1989bcaf0e3da9af1a0a599",
+      "relative_path": "files/b52e6859c4ec25b372cdbc0329627a60f7e05f45e1989bcaf0e3da9af1a0a599.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_prop_yinzhang_v1"
+    },
+    {
+      "content_hash": "4cbf9601f222e9021fc9ce2640b8d28fa09b0529360577089da52ccd5a0a3909",
+      "relative_path": "files/4cbf9601f222e9021fc9ce2640b8d28fa09b0529360577089da52ccd5a0a3909.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_stage_betrothal_v1"
+    },
+    {
+      "content_hash": "dad05a6ddd5d5774c77cfae0b3ca7db01ee8c87a75f69ff08e6cb4855ead535a",
+      "relative_path": "files/dad05a6ddd5d5774c77cfae0b3ca7db01ee8c87a75f69ff08e6cb4855ead535a.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_stage_ceremony_v1"
+    },
+    {
+      "content_hash": "d32b839f457412897f1726c75763d9dcc86d96f3c733bbcd848ce59031d5104a",
+      "relative_path": "files/d32b839f457412897f1726c75763d9dcc86d96f3c733bbcd848ce59031d5104a.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_stage_chase_v1"
+    },
+    {
+      "content_hash": "70d99eec1b8cf3666a98415ac54a9ceed0cf87a1d6afd70b9b9b3781b9cd3afb",
+      "relative_path": "files/70d99eec1b8cf3666a98415ac54a9ceed0cf87a1d6afd70b9b9b3781b9cd3afb.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_stage_confrontation_v1"
+    },
+    {
+      "content_hash": "b7fd10d60c7c1a14327887b449c9fd96834042bdff9a2c52095bf1701f228a38",
+      "relative_path": "files/b7fd10d60c7c1a14327887b449c9fd96834042bdff9a2c52095bf1701f228a38.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_stage_duel_v1"
+    },
+    {
+      "content_hash": "78aedb2f107bd178d02c1444af5b906b55f3f53976d1c8bf4e82c9a893109c2c",
+      "relative_path": "files/78aedb2f107bd178d02c1444af5b906b55f3f53976d1c8bf4e82c9a893109c2c.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_stage_improvise_v1"
+    },
+    {
+      "content_hash": "80faade173f6ee060caeaa3bea053f6ce56eee3e0bdc7deb2854a5f225c26a15",
+      "relative_path": "files/80faade173f6ee060caeaa3bea053f6ce56eee3e0bdc7deb2854a5f225c26a15.png",
+      "media_type": "image/png",
+      "asset_id": "guyandu_stage_shared_meal_v1"
+    }
+  ]
+}
