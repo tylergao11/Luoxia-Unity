@@ -18,8 +18,6 @@ namespace Luoxia.UI.Widgets
 
     public sealed class AvatarRailItemView : ListItemView<AvatarRailItemModel>, IPointerClickHandler
     {
-        private static readonly Color EmptySlotColor = new Color(0.22f, 0.2f, 0.24f, 1f);
-
         [SerializeField] private Image portraitImage;
         [SerializeField] private Image selectedFrame;
         [SerializeField] private Image notificationDot;
@@ -66,6 +64,8 @@ namespace Luoxia.UI.Widgets
 
             if (portraitImage != null)
             {
+                // Never paint a black placeholder square — missing art leaves the
+                // circular mask chassis empty and the gold ring alone.
                 if (model.Portrait != null)
                 {
                     portraitImage.sprite = model.Portrait;
@@ -75,8 +75,7 @@ namespace Luoxia.UI.Widgets
                 else
                 {
                     portraitImage.sprite = null;
-                    portraitImage.color = EmptySlotColor;
-                    portraitImage.enabled = true;
+                    portraitImage.enabled = false;
                 }
 
                 portraitImage.raycastTarget = false;

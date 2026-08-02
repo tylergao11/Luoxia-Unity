@@ -118,8 +118,8 @@ namespace Luoxia.Editor
             sceneFitter.aspectRatio = W / H;
 
             var portraitGo = Create("Portrait", sceneLayer.transform);
-            // Shrunk hot zone (mid character area).
-            SetAnchors(portraitGo, 0.30f, 0.42f, 0.70f, 0.78f);
+            // Half-body band above the feature panel (panel top ≈ 0.46): large, centered.
+            SetAnchors(portraitGo, 0.08f, 0.34f, 0.92f, 0.90f);
             var portraitImg = AddImage(portraitGo, null, Image.Type.Simple, Color.white);
             portraitImg.preserveAspect = true;
             portraitImg.raycastTarget = false;
@@ -144,9 +144,9 @@ namespace Luoxia.Editor
             assetErr.gameObject.SetActive(false);
             Assign(scenePortrait, "assetErrorText", assetErr);
 
-            // ── 2 BottomShell ───────────────────────────────────────────────
+            // ── 2 BottomShell (soft atmosphere under the feature panel only) ─
             var bottomShell = Create("BottomShell", designParent);
-            SetAnchors(bottomShell, 0f, 0f, 1f, 0.52f);
+            SetAnchors(bottomShell, 0f, 0f, 1f, 0.48f);
             bottomShell.AddComponent<RectMask2D>();
 
             var bottomGrad = Create("BottomGradient", bottomShell.transform);
@@ -154,43 +154,45 @@ namespace Luoxia.Editor
             var gradImg = AddImage(bottomGrad, Map("panel_bottom_gradient_9slice.png"), Image.Type.Sliced, Color.white);
             gradImg.raycastTarget = false;
 
+            // Mist is a soft foot fade only — never a mid-screen black cloud covering the bust.
             var mist = Create("DialogueMist", bottomShell.transform);
-            var mistRt = mist.GetComponent<RectTransform>();
-            mistRt.anchorMin = new Vector2(0.5f, 0f);
-            mistRt.anchorMax = new Vector2(0.5f, 0f);
-            mistRt.pivot = new Vector2(0.5f, 0f);
-            mistRt.sizeDelta = new Vector2(1080f, 1200f);
-            mistRt.anchoredPosition = Vector2.zero;
-            var mistImg = AddImage(mist, Map("deco_dialogue_mist.png"), Image.Type.Simple, new Color(1f, 1f, 1f, 0.95f));
+            SetAnchors(mist, 0f, 0f, 1f, 0.55f);
+            var mistImg = AddImage(mist, Map("deco_dialogue_mist.png"), Image.Type.Simple, new Color(1f, 1f, 1f, 0.55f));
             mistImg.raycastTarget = false;
-            mistImg.preserveAspect = true;
+            mistImg.preserveAspect = false;
 
             var lotus = Create("LotusWater", bottomShell.transform);
-            SetAnchors(lotus, 0.05f, 0.0f, 0.95f, 0.22f);
+            SetAnchors(lotus, 0.05f, 0.0f, 0.95f, 0.28f);
             var lotusImg = AddImage(lotus, Map("deco_bottom_lotus_water.png"), Image.Type.Simple, Color.white);
             lotusImg.preserveAspect = true;
             lotusImg.raycastTarget = false;
 
             var sparkle = Create("Sparkle", bottomShell.transform);
-            SetAnchors(sparkle, 0.42f, 0.14f, 0.58f, 0.24f);
+            SetAnchors(sparkle, 0.42f, 0.18f, 0.58f, 0.32f);
             var sparkleImg = AddImage(sparkle, Map("deco_sparkle_gold.png"), Image.Type.Simple, Color.white);
             sparkleImg.preserveAspect = true;
             sparkleImg.raycastTarget = false;
 
-            // ── 3 FeatureDock ───────────────────────────────────────────────
+            // ── 3 FeatureDock (lower band only — matches schematic panel) ────
             var featureDock = Create("FeatureDock", designParent);
-            Stretch(featureDock);
+            SetAnchors(featureDock, 0f, 0f, 1f, 0.48f);
 
-            // Gesture zone: full width y≈150–990 (excludes InputBar)
+            // Ornate content chassis: tabs + pages sit inside this panel, not mid-bust.
+            var featureChassis = Create("FeatureChassis", featureDock.transform);
+            SetAnchors(featureChassis, 0.03f, 0.14f, 0.97f, 0.98f);
+            var chassisImg = AddImage(featureChassis, Map("panel_event_modal_9slice.png"), Image.Type.Sliced, Color.white);
+            chassisImg.raycastTarget = false;
+
+            // Gesture zone covers chassis page area (excludes InputBar below).
             var gestureZone = Create("GestureZone", featureDock.transform);
-            SetRectBL(gestureZone, 0f, 150f, W, 840f);
+            SetAnchors(gestureZone, 0.03f, 0.14f, 0.97f, 0.98f);
             var gestureImg = AddImage(gestureZone, null, Image.Type.Simple, new Color(1f, 1f, 1f, 0f));
             gestureImg.raycastTarget = true;
             var swipeNav = gestureZone.AddComponent<FeatureSwipeNavigator>();
             Assign(swipeNav, "screen", screen);
 
             var tabs = Create("Tabs", featureDock.transform);
-            SetRectBL(tabs, 180, 900, 720, 80);
+            SetAnchors(tabs, 0.12f, 0.88f, 0.88f, 0.98f);
 
             // Full-width baseline under both tabs.
             var tabBase = Create("TabBaseLine", tabs.transform);
@@ -209,7 +211,7 @@ namespace Luoxia.Editor
 
             // Horizontal feature pages: dialogue @0, event @1080; content slides 0 ↔ −1080.
             var featurePages = Create("FeaturePages", featureDock.transform);
-            SetAnchors(featurePages, 0f, 0.09f, 1f, 0.44f);
+            SetAnchors(featurePages, 0.05f, 0.16f, 0.95f, 0.86f);
             featurePages.AddComponent<RectMask2D>();
 
             var pagesContent = Create("FeaturePagesContent", featurePages.transform);
@@ -261,9 +263,9 @@ namespace Luoxia.Editor
             scroll.horizontal = false;
             scroll.movementType = ScrollRect.MovementType.Clamped;
 
-            // Input bar (dialogue tab only interactable)
+            // Input bar sits under the chassis (dialogue tab only interactable).
             var inputBar = Create("InputBar", featureDock.transform);
-            SetRectBL(inputBar, 40, 24, 1000, 120);
+            SetAnchors(inputBar, 0.04f, 0.01f, 0.96f, 0.13f);
             var inputBarCg = inputBar.AddComponent<CanvasGroup>();
             var inputBg = AddImage(inputBar, Map("panel_dialogue_input_9slice.png"), Image.Type.Sliced, Color.white);
 
@@ -371,8 +373,9 @@ namespace Luoxia.Editor
             Assign(eventPanel, "headerCountText", eventCount);
             Assign(eventPanel, "openAllButton", openAllBtn);
 
-            // Raise pages / tabs above gesture zone so list rows receive clicks first.
-            gestureZone.transform.SetAsFirstSibling();
+            // Chassis at back; gesture under pages; tabs/input on top for hit priority.
+            featureChassis.transform.SetAsFirstSibling();
+            gestureZone.transform.SetSiblingIndex(1);
             featurePages.transform.SetAsLastSibling();
             tabs.transform.SetAsLastSibling();
             inputBar.transform.SetAsLastSibling();
@@ -405,22 +408,23 @@ namespace Luoxia.Editor
             var budgetWidget = budget.AddComponent<EventBudgetWidget>();
             Assign(budgetWidget, "budgetText", budgetLabel);
 
+            // Circular HUD map — schematic: gold ring + dark face + marker.
+            // Never use panel_minimap (vertical modal chassis) or cloud_ring here.
             var minimapRoot = Create("Minimap", hudTop.transform);
-            SetRectBL(minimapRoot, 28, 1400, 280, 280);
+            SetRectBL(minimapRoot, 40, 1460, 200, 200);
+            var circleSprite = EnsureCircleSprite();
             var mapFace = Create("MapFace", minimapRoot.transform);
-            SetAnchors(mapFace, 0.12f, 0.12f, 0.88f, 0.88f);
-            // Map panel face inside the ring — CloudRing draws the ring exactly once
-            // (drawing the ring twice produced a double-exposure artifact).
-            var mapFaceImg = AddImage(mapFace, Map("panel_minimap.png"), Image.Type.Simple, Color.white);
+            Stretch(mapFace);
+            var mapFaceImg = AddImage(mapFace, circleSprite, Image.Type.Simple, new Color(0.07f, 0.06f, 0.08f, 0.94f));
             mapFaceImg.preserveAspect = true;
             mapFaceImg.raycastTarget = true;
-            var cloudRing = Create("CloudRing", minimapRoot.transform);
-            Stretch(cloudRing);
-            var ringImg = AddImage(cloudRing, Map("frame_minimap_cloud_ring.png"), Image.Type.Simple, Color.white);
+            var mapRing = Create("MapRing", minimapRoot.transform);
+            Stretch(mapRing);
+            var ringImg = AddImage(mapRing, Map("frame_event_portrait.png"), Image.Type.Simple, Color.white);
             ringImg.preserveAspect = true;
             ringImg.raycastTarget = false;
             var mapMarker = Create("MapMarker", minimapRoot.transform);
-            SetAnchors(mapMarker, 0.42f, 0.42f, 0.58f, 0.58f);
+            SetAnchors(mapMarker, 0.36f, 0.36f, 0.64f, 0.64f);
             var markerImg = AddImage(mapMarker, Map("icon_map_marker.png"), Image.Type.Simple, Color.white);
             markerImg.preserveAspect = true;
             markerImg.raycastTarget = false;
@@ -428,7 +432,7 @@ namespace Luoxia.Editor
             mapBtn.targetGraphic = mapFaceImg;
 
             var endDayGo = Create("EndDayButton", hudTop.transform);
-            SetRectBL(endDayGo, 28, 1330, 280, 60);
+            SetRectBL(endDayGo, 40, 1388, 200, 56);
             var endDayIdleSprite = Map("button_event_choice_normal_9slice.png");
             var endDayPrimarySprite = Map("button_event_choice_active_9slice.png");
             var endDayImg = AddImage(endDayGo, endDayIdleSprite, Image.Type.Sliced, Color.white);
@@ -438,7 +442,7 @@ namespace Luoxia.Editor
             Stretch(endDayLabel.gameObject);
 
             var badge = Create("EventBadgeBar", hudTop.transform);
-            SetRectBL(badge, 28, 1256, 440, 60);
+            SetRectBL(badge, 40, 1316, 360, 56);
             var badgeBg = AddImage(badge, Map("panel_avatar_name.png"), Image.Type.Sliced, Color.white);
             badgeBg.raycastTarget = true;
             var badgeIcon = Create("BadgeIcon", badge.transform);
@@ -1232,39 +1236,49 @@ namespace Luoxia.Editor
         private static GameObject BuildAvatarRailItemPrefab()
         {
             var root = Create("AvatarRailItem", null);
-            root.GetComponent<RectTransform>().sizeDelta = new Vector2(120, 140);
+            root.GetComponent<RectTransform>().sizeDelta = new Vector2(128, 148);
 
-            // Root hit target stays transparent so empty/dark avatar display never blacks the Button tint.
+            // Root hit target stays transparent so Button tint never paints a black square.
             var hitImg = AddImage(root, null, Image.Type.Simple, new Color(1f, 1f, 1f, 0f));
             hitImg.raycastTarget = true;
 
-            var portrait = Create("Portrait", root.transform);
-            SetAnchors(portrait, 0.08f, 0.28f, 0.92f, 0.95f);
-            var pImg = AddImage(portrait, null, Image.Type.Simple, new Color(0.22f, 0.2f, 0.24f, 1f));
+            var circle = EnsureCircleSprite();
+
+            // Circular mask chassis — portrait is a child so it crops to the circle.
+            var maskGo = Create("PortraitMask", root.transform);
+            SetAnchors(maskGo, 0.08f, 0.30f, 0.92f, 0.96f);
+            var maskImg = AddImage(maskGo, circle, Image.Type.Simple, new Color(0.1f, 0.09f, 0.11f, 0.35f));
+            maskImg.raycastTarget = false;
+            var mask = maskGo.AddComponent<Mask>();
+            mask.showMaskGraphic = true;
+
+            var portrait = Create("Portrait", maskGo.transform);
+            Stretch(portrait);
+            var pImg = AddImage(portrait, null, Image.Type.Simple, Color.white);
             pImg.preserveAspect = true;
             pImg.raycastTarget = false;
+            pImg.enabled = false;
 
-            // Permanent portrait ring so every chip reads framed, not a bare square.
+            // Ring drawn after the mask so it sits on top of the cropped face.
             var ring = Create("PortraitRing", root.transform);
-            SetAnchors(ring, 0.02f, 0.22f, 0.98f, 1f);
+            SetAnchors(ring, 0.02f, 0.24f, 0.98f, 1f);
             var ringImg = AddImage(ring, Map("frame_event_portrait.png"), Image.Type.Simple, Color.white);
             ringImg.preserveAspect = true;
             ringImg.raycastTarget = false;
 
             var frame = Create("SelectedFrame", root.transform);
-            SetAnchors(frame, 0f, 0.2f, 1f, 1f);
+            SetAnchors(frame, 0f, 0.22f, 1f, 1f);
             var fImg = AddImage(frame, Map("frame_avatar_selected.png"), Image.Type.Simple, Color.white);
             fImg.preserveAspect = true;
             fImg.enabled = false;
             fImg.raycastTarget = false;
 
             var namePlate = Create("NamePlate", root.transform);
-            SetAnchors(namePlate, 0.05f, 0.0f, 0.95f, 0.28f);
+            SetAnchors(namePlate, 0.02f, 0.0f, 0.98f, 0.28f);
             var plateImg = AddImage(namePlate, Map("panel_avatar_name.png"), Image.Type.Sliced, Color.white);
             plateImg.raycastTarget = false;
             var name = CreateUiText("Name", namePlate.transform, string.Empty, 20, FontStyle.Normal, TextAnchor.MiddleCenter);
             Stretch(name.gameObject);
-            // Long dossier titles must shrink instead of wrapping into clipped lines.
             name.resizeTextForBestFit = true;
             name.resizeTextMinSize = 12;
             name.resizeTextMaxSize = 20;
@@ -1397,6 +1411,74 @@ namespace Luoxia.Editor
             }
 
             return font;
+        }
+
+        /// <summary>
+        /// Soft opaque circle used as HUD map face and avatar Mask chassis.
+        /// Written once under Map art; subsequent builds reuse the imported Sprite.
+        /// </summary>
+        private static Sprite EnsureCircleSprite()
+        {
+            const string path = MapArt + "/generated_soft_circle.png";
+            var existing = AssetDatabase.LoadAssetAtPath<Sprite>(path);
+            if (existing != null)
+            {
+                return existing;
+            }
+
+            const int size = 256;
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false)
+            {
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Bilinear
+            };
+            var cx = (size - 1) * 0.5f;
+            var radius = cx - 1.5f;
+            for (var y = 0; y < size; y++)
+            {
+                for (var x = 0; x < size; x++)
+                {
+                    var dx = x - cx;
+                    var dy = y - cx;
+                    var d = Mathf.Sqrt(dx * dx + dy * dy);
+                    float alpha;
+                    if (d <= radius - 1.5f)
+                    {
+                        alpha = 1f;
+                    }
+                    else if (d >= radius + 0.5f)
+                    {
+                        alpha = 0f;
+                    }
+                    else
+                    {
+                        alpha = 1f - (d - (radius - 1.5f)) / 2f;
+                    }
+
+                    tex.SetPixel(x, y, new Color(1f, 1f, 1f, alpha));
+                }
+            }
+
+            tex.Apply(false, false);
+            var bytes = tex.EncodeToPNG();
+            UnityEngine.Object.DestroyImmediate(tex);
+            var full = Path.GetFullPath(path);
+            Directory.CreateDirectory(Path.GetDirectoryName(full) ?? MapArt);
+            File.WriteAllBytes(full, bytes);
+            AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
+            var importer = (TextureImporter)AssetImporter.GetAtPath(path);
+            if (importer != null)
+            {
+                importer.textureType = TextureImporterType.Sprite;
+                importer.spriteImportMode = SpriteImportMode.Single;
+                importer.alphaIsTransparency = true;
+                importer.mipmapEnabled = false;
+                importer.filterMode = FilterMode.Bilinear;
+                importer.textureCompression = TextureImporterCompression.Uncompressed;
+                importer.SaveAndReimport();
+            }
+
+            return AssetDatabase.LoadAssetAtPath<Sprite>(path);
         }
 
         private static void EnsureEventSystem()

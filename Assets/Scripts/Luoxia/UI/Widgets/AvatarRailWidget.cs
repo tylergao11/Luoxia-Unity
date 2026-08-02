@@ -9,8 +9,9 @@ namespace Luoxia.UI.Widgets
 {
     /// <summary>
     /// Top avatar strip for selectable dialogue targets.
-    /// Sources: co-located portrait/interaction_anchor subjects + active dialogue participants.
-    /// Portraits resolve via content_hash; miss leaves empty sprite (no fake art).
+    /// Instantiates one chip per presentable subject (never a fixed slot grid).
+    /// Sources: co-located portrait/interaction_anchor subjects + active dialogue
+    /// entity participants. Faceless System / nameless subjects are skipped.
     /// </summary>
     public sealed class AvatarRailWidget : HudWidget
     {
@@ -79,7 +80,6 @@ namespace Luoxia.UI.Widgets
             var result = new List<AvatarRailItemModel>();
             var selected = _selection != null ? _selection.Current : null;
             var seen = new HashSet<string>();
-            var hasSystem = false;
 
             void AddEntity(string entityId)
             {
@@ -91,6 +91,12 @@ namespace Luoxia.UI.Widgets
                 }
 
                 var display = LoreQuery.ResolveSubjectDisplayName(view, entityId);
+                // No display name ⇒ nothing to show; never invent a black empty chip.
+                if (string.IsNullOrEmpty(display))
+                {
+                    return;
+                }
+
                 var isSelected = selected.HasValue &&
                                  selected.Value.kind == DialogueParticipantKind.Entity &&
                                  selected.Value.entityId == entityId;
@@ -128,22 +134,10 @@ namespace Luoxia.UI.Widgets
                 for (var p = 0; p < dialogue.participants.Count; p++)
                 {
                     var part = dialogue.participants[p];
+                    // Faceless System chips used to paint black squares — skip.
+                    // System dialogue remains reachable via focused-dialogue fallback.
                     if (part.KindEnum == DialogueParticipantKind.System)
                     {
-                        if (hasSystem)
-                        {
-                            continue;
-                        }
-
-                        hasSystem = true;
-                        result.Add(new AvatarRailItemModel
-                        {
-                            Target = DialogueTarget.System(string.Empty),
-                            DisplayName = string.Empty,
-                            Selected = selected.HasValue && selected.Value.kind == DialogueParticipantKind.System,
-                            HasNotification = false,
-                            CanInspect = false
-                        });
                         continue;
                     }
 

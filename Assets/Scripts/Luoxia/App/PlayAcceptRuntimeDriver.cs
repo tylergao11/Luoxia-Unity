@@ -1229,6 +1229,8 @@ namespace Luoxia.App
         private void CheckBootChrome()
         {
             Check("SwipeHint absent at runtime", GameObject.Find("SwipeHint") == null);
+            Check("CloudRing absent (HUD map is circular face+ring)", GameObject.Find("CloudRing") == null);
+            Check("FeatureChassis present (dialogue/event panel)", GameObject.Find("FeatureChassis") != null);
             Check("FeaturePagesContent present", GameObject.Find("FeaturePagesContent") != null);
             Check("EventCardConfirmPanel present", FindObjectOfType<EventCardConfirmPanel>(true) != null);
             Check("SessionFatalOverlay not blocking boot",
@@ -1236,7 +1238,45 @@ namespace Luoxia.App
             var dialogue = FindObjectOfType<DialogueFeaturePanel>(true);
             var inputBar = GetSerialized<CanvasGroup>(dialogue, "inputBarGroup");
             Check("dialogue InputBar visible (alpha≈1)", inputBar != null && inputBar.alpha > 0.9f);
+            CheckAvatarRailHasNoBlackPlaceholders();
             CheckSceneFollowsLocation("boot");
+        }
+
+        /// <summary>
+        /// Active AvatarRail chips must never paint solid black placeholder squares.
+        /// Missing art leaves the circular mask empty; the chip itself still has a name.
+        /// </summary>
+        private void CheckAvatarRailHasNoBlackPlaceholders()
+        {
+            var items = FindObjectsOfType<AvatarRailItemView>(true);
+            var active = 0;
+            var blackish = 0;
+            for (var i = 0; i < items.Length; i++)
+            {
+                if (!items[i].gameObject.activeInHierarchy)
+                {
+                    continue;
+                }
+
+                active++;
+                var portrait = GetSerialized<Image>(items[i], "portraitImage");
+                if (portrait == null || !portrait.enabled || portrait.sprite != null)
+                {
+                    continue;
+                }
+
+                // Enabled Image with null sprite + dark tint = the old empty-slot bug.
+                if (portrait.color.a > 0.5f &&
+                    portrait.color.r < 0.35f &&
+                    portrait.color.g < 0.35f &&
+                    portrait.color.b < 0.35f)
+                {
+                    blackish++;
+                }
+            }
+
+            Check("AvatarRail has no black placeholder chips", blackish == 0);
+            Note($"avatar rail active={active} blackish={blackish}");
         }
 
         /// <summary>
