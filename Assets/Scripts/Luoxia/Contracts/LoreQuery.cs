@@ -262,6 +262,12 @@ namespace Luoxia.Contracts
                     continue;
                 }
 
+                // Map anchors are location navigation chrome, never dialogue presence.
+                if (node.slot_id == "map_anchor")
+                {
+                    continue;
+                }
+
                 var entityId = node.subject_entity_id;
                 if (string.IsNullOrEmpty(entityId) ||
                     entityId == view.player_entity_id ||
@@ -276,6 +282,11 @@ namespace Luoxia.Contracts
             return result;
         }
 
+        /// <summary>
+        /// Scene node for the player's current location (exact subject match);
+        /// otherwise the world-level scene node (no entity subject).
+        /// Never another location's scene.
+        /// </summary>
         public static RenderNodeDto FindSceneNode(SessionViewDto view)
         {
             if (view?.render_nodes == null)
@@ -283,16 +294,30 @@ namespace Luoxia.Contracts
                 return null;
             }
 
+            var currentLocationId = view.player_location_entity_id;
+            RenderNodeDto worldScene = null;
             for (var i = 0; i < view.render_nodes.Count; i++)
             {
                 var node = view.render_nodes[i];
-                if (node != null && node.KindEnum == RenderNodeKind.Scene)
+                if (node == null || node.KindEnum != RenderNodeKind.Scene)
+                {
+                    continue;
+                }
+
+                var subjectId = node.subject_entity_id;
+                if (!string.IsNullOrEmpty(currentLocationId) &&
+                    subjectId == currentLocationId)
                 {
                     return node;
                 }
+
+                if (string.IsNullOrEmpty(subjectId) && worldScene == null)
+                {
+                    worldScene = node;
+                }
             }
 
-            return null;
+            return worldScene;
         }
 
         /// <summary>

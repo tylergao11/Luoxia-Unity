@@ -22,8 +22,6 @@ namespace Luoxia.UI.Screens
     {
         private static readonly Color TabActiveColor = new Color(1f, 0.84f, 0.4f, 1f);
         private static readonly Color TabInactiveColor = new Color(1f, 0.95f, 0.85f, 0.55f);
-        private static readonly Color EndDayIdleBg = new Color(0.12f, 0.1f, 0.08f, 0.88f);
-        private static readonly Color EndDayPrimaryBg = new Color(0.72f, 0.48f, 0.16f, 0.96f);
         private static readonly Color EndDayIdleLabel = new Color(1f, 0.95f, 0.85f, 0.85f);
         private static readonly Color EndDayPrimaryLabel = new Color(1f, 0.98f, 0.9f, 1f);
 
@@ -37,6 +35,8 @@ namespace Luoxia.UI.Screens
         [SerializeField] private Button endDayButton;
         [SerializeField] private Image endDayButtonImage;
         [SerializeField] private Text endDayButtonLabel;
+        [SerializeField] private Sprite endDayIdleSprite;
+        [SerializeField] private Sprite endDayPrimarySprite;
         [SerializeField] private CommandFeedbackHud commandFeedback;
         [SerializeField] private SessionFatalOverlay fatalOverlay;
 
@@ -220,10 +220,109 @@ namespace Luoxia.UI.Screens
             // Dialogue pairs with EventCard spend; remaining===0 → only day-end for input.
             // Opening EventCards stays unlocked (开卡不锁).
             _hasDialogueBudget = view?.event_budget == null || view.event_budget.remaining > 0;
+            InvalidateStaleDialogueSelection(view);
             // View replace clears pending toast only (_locked); does not wipe ShowError.
             commandFeedback?.ClearPending();
             eventCardConfirmPanel?.OnSessionView(view);
             RefreshCommandLockUi();
+        }
+
+        /// <summary>
+        /// A selected dialogue target must remain offerable: co-located subject or
+        /// participant of an active dialogue. After map.move / day rollover the stale
+        /// selection is cleared so input cannot address an absent character.
+        /// </summary>
+        private void InvalidateStaleDialogueSelection(SessionViewDto view)
+        {
+            if (_selection?.Current == null || view == null)
+            {
+                return;
+            }
+
+            var current = _selection.Current.Value;
+            if (current.kind == DialogueParticipantKind.Entity)
+            {
+                if (string.IsNullOrEmpty(current.entityId) ||
+                    !IsOfferableEntity(view, current.entityId))
+                {
+                    _selection.Clear();
+                }
+
+                return;
+            }
+
+            if (current.kind == DialogueParticipantKind.System &&
+                !HasActiveSystemDialogue(view))
+            {
+                _selection.Clear();
+            }
+        }
+
+        private static bool IsOfferableEntity(SessionViewDto view, string entityId)
+        {
+            var colocated = LoreQuery.CollectCoLocatedEntityIds(view);
+            for (var i = 0; i < colocated.Count; i++)
+            {
+                if (colocated[i] == entityId)
+                {
+                    return true;
+                }
+            }
+
+            if (view.dialogues == null)
+            {
+                return false;
+            }
+
+            for (var d = 0; d < view.dialogues.Count; d++)
+            {
+                var dialogue = view.dialogues[d];
+                if (dialogue == null || !dialogue.IsActive || dialogue.participants == null)
+                {
+                    continue;
+                }
+
+                for (var p = 0; p < dialogue.participants.Count; p++)
+                {
+                    var part = dialogue.participants[p];
+                    if (part != null &&
+                        part.KindEnum == DialogueParticipantKind.Entity &&
+                        part.entity_id == entityId)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private static bool HasActiveSystemDialogue(SessionViewDto view)
+        {
+            if (view.dialogues == null)
+            {
+                return false;
+            }
+
+            for (var d = 0; d < view.dialogues.Count; d++)
+            {
+                var dialogue = view.dialogues[d];
+                if (dialogue == null || !dialogue.IsActive || dialogue.participants == null)
+                {
+                    continue;
+                }
+
+                for (var p = 0; p < dialogue.participants.Count; p++)
+                {
+                    var part = dialogue.participants[p];
+                    if (part != null && part.KindEnum == DialogueParticipantKind.System)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
         }
 
         public void ActivateFeature(string featureId)
@@ -472,13 +571,15 @@ namespace Luoxia.UI.Screens
         {
             if (endDayButtonImage != null)
             {
-                endDayButtonImage.color = primary ? EndDayPrimaryBg : EndDayIdleBg;
+                // Builder wires normal/active 9-slice chrome; primary swaps art, not tint.
+                endDayButtonImage.sprite = primary ? endDayPrimarySprite : endDayIdleSprite;
+                endDayButtonImage.color = Color.white;
             }
 
             if (endDayButtonLabel != null)
             {
+                // Emphasis via color only — faux-bold doubles CJK strokes into mud.
                 endDayButtonLabel.color = primary ? EndDayPrimaryLabel : EndDayIdleLabel;
-                endDayButtonLabel.fontStyle = primary ? FontStyle.Bold : FontStyle.Normal;
             }
         }
 

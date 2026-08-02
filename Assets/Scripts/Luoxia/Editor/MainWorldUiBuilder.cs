@@ -269,11 +269,17 @@ namespace Luoxia.Editor
 
             var inputGo = Create("InputField", inputBar.transform);
             SetAnchors(inputGo, 0.04f, 0.15f, 0.78f, 0.85f);
+            // Invisible hit surface — child texts are raycastTarget=false, so the
+            // InputField itself must own a raycastable Graphic to receive focus taps.
+            var inputHit = AddImage(inputGo, null, Image.Type.Simple, new Color(1f, 1f, 1f, 0f));
+            inputHit.raycastTarget = true;
             var inputField = inputGo.AddComponent<InputField>();
+            inputField.targetGraphic = inputHit;
             var textArea = Create("Text Area", inputGo.transform);
             Stretch(textArea);
             textArea.AddComponent<RectMask2D>();
-            var placeholder = CreateUiText("Placeholder", textArea.transform, string.Empty, 26, FontStyle.Italic, TextAnchor.MiddleLeft);
+            // CJK has no italics; faux-italic slant reads as rendering damage.
+            var placeholder = CreateUiText("Placeholder", textArea.transform, string.Empty, 26, FontStyle.Normal, TextAnchor.MiddleLeft);
             placeholder.color = new Color(1f, 1f, 1f, 0.35f);
             Stretch(placeholder.gameObject);
             var inputText = CreateUiText("Text", textArea.transform, string.Empty, 26, FontStyle.Normal, TextAnchor.MiddleLeft);
@@ -320,7 +326,7 @@ namespace Luoxia.Editor
             ehi.preserveAspect = true;
             ehi.raycastTarget = false;
 
-            var eventHeader = CreateUiText("EventHeader", eventPanelGo.transform, "今日事件", 30, FontStyle.Bold, TextAnchor.MiddleLeft);
+            var eventHeader = CreateUiText("EventHeader", eventPanelGo.transform, "今日事件", 30, FontStyle.Normal, TextAnchor.MiddleLeft);
             SetAnchors(eventHeader.gameObject, 0.12f, 0.90f, 0.55f, 1f);
             var eventCount = CreateUiText("EventCount", eventPanelGo.transform, "待开启 0 件", 24, FontStyle.Normal, TextAnchor.MiddleRight);
             SetAnchors(eventCount.gameObject, 0.55f, 0.90f, 0.98f, 1f);
@@ -357,7 +363,7 @@ namespace Luoxia.Editor
             var openAllImg = AddImage(openAll, Map("button_open_all_9slice.png"), Image.Type.Sliced, Color.white);
             var openAllBtn = openAll.AddComponent<Button>();
             openAllBtn.targetGraphic = openAllImg;
-            var openAllLabel = CreateUiText("Label", openAll.transform, "全部开启", 30, FontStyle.Bold, TextAnchor.MiddleCenter);
+            var openAllLabel = CreateUiText("Label", openAll.transform, "全部开启", 30, FontStyle.Normal, TextAnchor.MiddleCenter);
             Stretch(openAllLabel.gameObject);
 
             Assign(eventPanel, "itemPrefab", eventItemPrefab.GetComponent<EventCardItemView>());
@@ -377,7 +383,7 @@ namespace Luoxia.Editor
 
             var location = Create("LocationDay", hudTop.transform);
             SetRectBL(location, 32, 1780, 380, 100);
-            var locTitle = CreateUiText("LocationText", location.transform, string.Empty, 34, FontStyle.Bold, TextAnchor.UpperLeft);
+            var locTitle = CreateUiText("LocationText", location.transform, string.Empty, 34, FontStyle.Normal, TextAnchor.UpperLeft);
             SetAnchors(locTitle.gameObject, 0f, 0.45f, 1f, 1f);
             var dayText = CreateUiText("DayTimeText", location.transform, string.Empty, 26, FontStyle.Normal, TextAnchor.UpperLeft);
             SetAnchors(dayText.gameObject, 0f, 0f, 0.85f, 0.5f);
@@ -394,7 +400,7 @@ namespace Luoxia.Editor
             var budget = Create("EventBudget", hudTop.transform);
             SetRectBL(budget, 32, 1712, 320, 56);
             // Neutral empty until first SessionView; capacity/costs are pack-owned, never scaffolded.
-            var budgetLabel = CreateUiText("BudgetText", budget.transform, "—", 28, FontStyle.Bold, TextAnchor.MiddleLeft);
+            var budgetLabel = CreateUiText("BudgetText", budget.transform, "—", 28, FontStyle.Normal, TextAnchor.MiddleLeft);
             SetAnchors(budgetLabel.gameObject, 0f, 0.15f, 1f, 0.95f);
             var budgetWidget = budget.AddComponent<EventBudgetWidget>();
             Assign(budgetWidget, "budgetText", budgetLabel);
@@ -403,8 +409,9 @@ namespace Luoxia.Editor
             SetRectBL(minimapRoot, 28, 1400, 280, 280);
             var mapFace = Create("MapFace", minimapRoot.transform);
             SetAnchors(mapFace, 0.12f, 0.12f, 0.88f, 0.88f);
-            // Compact face chrome — full panel_minimap is reserved for MapDestinationPanel modal.
-            var mapFaceImg = AddImage(mapFace, Map("frame_minimap_cloud_ring.png"), Image.Type.Simple, Color.white);
+            // Map panel face inside the ring — CloudRing draws the ring exactly once
+            // (drawing the ring twice produced a double-exposure artifact).
+            var mapFaceImg = AddImage(mapFace, Map("panel_minimap.png"), Image.Type.Simple, Color.white);
             mapFaceImg.preserveAspect = true;
             mapFaceImg.raycastTarget = true;
             var cloudRing = Create("CloudRing", minimapRoot.transform);
@@ -422,15 +429,17 @@ namespace Luoxia.Editor
 
             var endDayGo = Create("EndDayButton", hudTop.transform);
             SetRectBL(endDayGo, 28, 1330, 280, 60);
-            var endDayImg = AddImage(endDayGo, null, Image.Type.Sliced, new Color(0.12f, 0.1f, 0.08f, 0.88f));
+            var endDayIdleSprite = Map("button_event_choice_normal_9slice.png");
+            var endDayPrimarySprite = Map("button_event_choice_active_9slice.png");
+            var endDayImg = AddImage(endDayGo, endDayIdleSprite, Image.Type.Sliced, Color.white);
             var endDayBtn = endDayGo.AddComponent<Button>();
             endDayBtn.targetGraphic = endDayImg;
-            var endDayLabel = CreateUiText("Label", endDayGo.transform, "收工", 28, FontStyle.Bold, TextAnchor.MiddleCenter);
+            var endDayLabel = CreateUiText("Label", endDayGo.transform, "收工", 28, FontStyle.Normal, TextAnchor.MiddleCenter);
             Stretch(endDayLabel.gameObject);
 
             var badge = Create("EventBadgeBar", hudTop.transform);
             SetRectBL(badge, 28, 1256, 440, 60);
-            var badgeBg = AddImage(badge, null, Image.Type.Simple, new Color(0.05f, 0.04f, 0.06f, 0.72f));
+            var badgeBg = AddImage(badge, Map("panel_avatar_name.png"), Image.Type.Sliced, Color.white);
             badgeBg.raycastTarget = true;
             var badgeIcon = Create("BadgeIcon", badge.transform);
             SetAnchors(badgeIcon, 0.02f, 0.15f, 0.14f, 0.85f);
@@ -472,7 +481,7 @@ namespace Luoxia.Editor
             var toastCg = toastGo.AddComponent<CanvasGroup>();
             toastCg.alpha = 0f;
             toastCg.blocksRaycasts = false;
-            var toastBg = AddImage(toastGo, null, Image.Type.Sliced, new Color(0.05f, 0.04f, 0.06f, 0.88f));
+            var toastBg = AddImage(toastGo, Map("panel_avatar_name.png"), Image.Type.Sliced, Color.white);
             toastBg.raycastTarget = false;
             var toastText = CreateUiText("Status", toastGo.transform, string.Empty, 26, FontStyle.Normal, TextAnchor.MiddleCenter);
             Stretch(toastText.gameObject);
@@ -501,7 +510,7 @@ namespace Luoxia.Editor
             var mapRootImg = AddImage(mapRoot, Map("panel_minimap.png"), Image.Type.Simple, Color.white);
             mapRootImg.preserveAspect = true;
             mapRootImg.raycastTarget = true;
-            var mapTitle = CreateUiText("Title", mapRoot.transform, "前往", 32, FontStyle.Bold, TextAnchor.MiddleCenter);
+            var mapTitle = CreateUiText("Title", mapRoot.transform, "前往", 32, FontStyle.Normal, TextAnchor.MiddleCenter);
             SetAnchors(mapTitle.gameObject, 0.1f, 0.88f, 0.9f, 0.98f);
             var mapList = Create("List", mapRoot.transform);
             SetAnchors(mapList, 0.10f, 0.16f, 0.90f, 0.86f);
@@ -515,10 +524,10 @@ namespace Luoxia.Editor
             SetAnchors(mapEmpty.gameObject, 0.1f, 0.4f, 0.9f, 0.6f);
             var mapClose = Create("Close", mapRoot.transform);
             SetAnchors(mapClose, 0.35f, 0.04f, 0.65f, 0.12f);
-            var mapCloseImg = AddImage(mapClose, null, Image.Type.Simple, new Color(0.2f, 0.16f, 0.12f, 0.95f));
+            var mapCloseImg = AddImage(mapClose, Map("button_event_choice_normal_9slice.png"), Image.Type.Sliced, Color.white);
             var mapCloseBtn = mapClose.AddComponent<Button>();
             mapCloseBtn.targetGraphic = mapCloseImg;
-            var mapCloseLabel = CreateUiText("Label", mapClose.transform, "关闭", 26, FontStyle.Bold, TextAnchor.MiddleCenter);
+            var mapCloseLabel = CreateUiText("Label", mapClose.transform, "关闭", 26, FontStyle.Normal, TextAnchor.MiddleCenter);
             Stretch(mapCloseLabel.gameObject);
             var mapPanel = mapPanelGo.AddComponent<MapDestinationPanel>();
             Assign(mapPanel, "canvasGroup", mapCg);
@@ -557,6 +566,8 @@ namespace Luoxia.Editor
             Assign(screen, "endDayButton", endDayBtn);
             Assign(screen, "endDayButtonImage", endDayImg);
             Assign(screen, "endDayButtonLabel", endDayLabel);
+            Assign(screen, "endDayIdleSprite", endDayIdleSprite);
+            Assign(screen, "endDayPrimarySprite", endDayPrimarySprite);
             Assign(screen, "commandFeedback", toast);
             Assign(screen, "fatalOverlay", fatal);
             Assign(screen, "dialogueTabButton", dialogueTab);
@@ -624,7 +635,7 @@ namespace Luoxia.Editor
             var arrivalDismissBtn = arrivalToast.AddComponent<Button>();
             arrivalDismissBtn.targetGraphic = arrivalToastImg;
             arrivalDismissBtn.transition = Selectable.Transition.None;
-            var arrivalTitle = CreateUiText("Title", arrivalToast.transform, string.Empty, 28, FontStyle.Bold, TextAnchor.UpperCenter);
+            var arrivalTitle = CreateUiText("Title", arrivalToast.transform, string.Empty, 28, FontStyle.Normal, TextAnchor.UpperCenter);
             SetAnchors(arrivalTitle.gameObject, 0.06f, 0.62f, 0.94f, 0.94f);
             var arrivalBody = CreateUiText("Body", arrivalToast.transform, string.Empty, 24, FontStyle.Normal, TextAnchor.UpperCenter);
             SetAnchors(arrivalBody.gameObject, 0.06f, 0.08f, 0.94f, 0.60f);
@@ -648,7 +659,7 @@ namespace Luoxia.Editor
             Stretch(chapterDim);
             var chapterDimImg = AddImage(chapterDim, null, Image.Type.Simple, new Color(0f, 0f, 0f, 0.72f));
             chapterDimImg.raycastTarget = true;
-            var chapterTitle = CreateUiText("Title", chapterGo.transform, string.Empty, 36, FontStyle.Bold, TextAnchor.MiddleCenter);
+            var chapterTitle = CreateUiText("Title", chapterGo.transform, string.Empty, 36, FontStyle.Normal, TextAnchor.MiddleCenter);
             SetAnchors(chapterTitle.gameObject, 0.1f, 0.62f, 0.9f, 0.78f);
             var chapterBody = CreateUiText("Body", chapterGo.transform, string.Empty, 28, FontStyle.Normal, TextAnchor.UpperCenter);
             SetAnchors(chapterBody.gameObject, 0.12f, 0.28f, 0.88f, 0.60f);
@@ -656,10 +667,10 @@ namespace Luoxia.Editor
             chapterBody.verticalOverflow = VerticalWrapMode.Overflow;
             var chapterAdvance = Create("Advance", chapterGo.transform);
             SetAnchors(chapterAdvance, 0.30f, 0.10f, 0.70f, 0.18f);
-            var chapterAdvanceImg = AddImage(chapterAdvance, null, Image.Type.Simple, new Color(0.15f, 0.12f, 0.1f, 0.9f));
+            var chapterAdvanceImg = AddImage(chapterAdvance, Map("button_event_choice_normal_9slice.png"), Image.Type.Sliced, Color.white);
             var chapterAdvanceBtn = chapterAdvance.AddComponent<Button>();
             chapterAdvanceBtn.targetGraphic = chapterAdvanceImg;
-            var chapterAdvanceLabel = CreateUiText("Label", chapterAdvance.transform, "继续", 28, FontStyle.Bold, TextAnchor.MiddleCenter);
+            var chapterAdvanceLabel = CreateUiText("Label", chapterAdvance.transform, "继续", 28, FontStyle.Normal, TextAnchor.MiddleCenter);
             Stretch(chapterAdvanceLabel.gameObject);
             var chapter = chapterGo.AddComponent<LoreChapterOverlay>();
             Assign(chapter, "canvasGroup", chapterCg);
@@ -678,7 +689,7 @@ namespace Luoxia.Editor
             SetAnchors(dossierRoot, 0.08f, 0.22f, 0.92f, 0.82f);
             var dossierBg = AddImage(dossierRoot, null, Image.Type.Simple, new Color(0.06f, 0.05f, 0.08f, 0.94f));
             dossierBg.raycastTarget = true;
-            var dossierName = CreateUiText("Name", dossierRoot.transform, string.Empty, 34, FontStyle.Bold, TextAnchor.UpperLeft);
+            var dossierName = CreateUiText("Name", dossierRoot.transform, string.Empty, 34, FontStyle.Normal, TextAnchor.UpperLeft);
             SetAnchors(dossierName.gameObject, 0.06f, 0.86f, 0.8f, 0.96f);
             var dossierProfile = CreateUiText("Profile", dossierRoot.transform, string.Empty, 24, FontStyle.Normal, TextAnchor.UpperLeft);
             SetAnchors(dossierProfile.gameObject, 0.06f, 0.48f, 0.94f, 0.84f);
@@ -759,7 +770,7 @@ namespace Luoxia.Editor
             var narrativeAdvanceBtn = narrativeAdvance.AddComponent<Button>();
             narrativeAdvanceBtn.targetGraphic = narrativeAdvanceImg;
             narrativeAdvanceBtn.transition = Selectable.Transition.ColorTint;
-            var narrativeAdvanceLabel = CreateUiText("Label", narrativeAdvance.transform, "继续", 28, FontStyle.Bold, TextAnchor.MiddleCenter);
+            var narrativeAdvanceLabel = CreateUiText("Label", narrativeAdvance.transform, "继续", 28, FontStyle.Normal, TextAnchor.MiddleCenter);
             Stretch(narrativeAdvanceLabel.gameObject);
 
             var narrativeClose = Create("Close", modal.transform);
@@ -790,7 +801,7 @@ namespace Luoxia.Editor
             Stretch(nightCurtainImgGo);
             var nightCurtainImg = AddImage(nightCurtainImgGo, null, Image.Type.Simple, new Color(0.02f, 0.02f, 0.08f, 0.94f));
             nightCurtainImg.raycastTarget = true;
-            var nightTitle = CreateUiText("Title", nightGo.transform, string.Empty, 36, FontStyle.Bold, TextAnchor.MiddleCenter);
+            var nightTitle = CreateUiText("Title", nightGo.transform, string.Empty, 36, FontStyle.Normal, TextAnchor.MiddleCenter);
             SetAnchors(nightTitle.gameObject, 0.1f, 0.58f, 0.9f, 0.72f);
             nightTitle.color = new Color(0.85f, 0.88f, 1f, 0.95f);
             var nightBody = CreateUiText("Body", nightGo.transform, string.Empty, 28, FontStyle.Normal, TextAnchor.UpperCenter);
@@ -800,10 +811,10 @@ namespace Luoxia.Editor
             nightBody.color = new Color(0.9f, 0.92f, 1f, 0.9f);
             var nightAdvance = Create("Advance", nightGo.transform);
             SetAnchors(nightAdvance, 0.30f, 0.10f, 0.70f, 0.18f);
-            var nightAdvanceImg = AddImage(nightAdvance, null, Image.Type.Simple, new Color(0.12f, 0.14f, 0.22f, 0.92f));
+            var nightAdvanceImg = AddImage(nightAdvance, Map("button_event_choice_normal_9slice.png"), Image.Type.Sliced, Color.white);
             var nightAdvanceBtn = nightAdvance.AddComponent<Button>();
             nightAdvanceBtn.targetGraphic = nightAdvanceImg;
-            var nightAdvanceLabel = CreateUiText("Label", nightAdvance.transform, "入夜", 28, FontStyle.Bold, TextAnchor.MiddleCenter);
+            var nightAdvanceLabel = CreateUiText("Label", nightAdvance.transform, "入夜", 28, FontStyle.Normal, TextAnchor.MiddleCenter);
             Stretch(nightAdvanceLabel.gameObject);
             var nightCurtain = nightGo.AddComponent<NightCurtainOverlay>();
             Assign(nightCurtain, "canvasGroup", nightCg);
@@ -821,7 +832,7 @@ namespace Luoxia.Editor
             var stageDim = Create("Dimmer", stageGo.transform);
             Stretch(stageDim);
             AddImage(stageDim, null, Image.Type.Simple, new Color(0.02f, 0.02f, 0.05f, 0.92f)).raycastTarget = true;
-            var stageScene = CreateUiText("SceneId", stageGo.transform, string.Empty, 24, FontStyle.Bold, TextAnchor.MiddleCenter);
+            var stageScene = CreateUiText("SceneId", stageGo.transform, string.Empty, 24, FontStyle.Normal, TextAnchor.MiddleCenter);
             SetAnchors(stageScene.gameObject, 0.1f, 0.78f, 0.9f, 0.88f);
             var stageContext = CreateUiText("Context", stageGo.transform, string.Empty, 26, FontStyle.Normal, TextAnchor.UpperCenter);
             SetAnchors(stageContext.gameObject, 0.1f, 0.25f, 0.9f, 0.75f);
@@ -829,10 +840,10 @@ namespace Luoxia.Editor
             stageContext.verticalOverflow = VerticalWrapMode.Overflow;
             var stageDismiss = Create("Dismiss", stageGo.transform);
             SetAnchors(stageDismiss, 0.35f, 0.04f, 0.65f, 0.10f);
-            var stageDismissImg = AddImage(stageDismiss, null, Image.Type.Simple, new Color(0.12f, 0.12f, 0.18f, 0.9f));
+            var stageDismissImg = AddImage(stageDismiss, Map("button_event_choice_normal_9slice.png"), Image.Type.Sliced, Color.white);
             var stageDismissBtn = stageDismiss.AddComponent<Button>();
             stageDismissBtn.targetGraphic = stageDismissImg;
-            var stageDismissLabel = CreateUiText("Label", stageDismiss.transform, "关闭", 26, FontStyle.Bold, TextAnchor.MiddleCenter);
+            var stageDismissLabel = CreateUiText("Label", stageDismiss.transform, "关闭", 26, FontStyle.Normal, TextAnchor.MiddleCenter);
             Stretch(stageDismissLabel.gameObject);
             var stageOutcomes = Create("OutcomeButtons", stageGo.transform);
             SetAnchors(stageOutcomes, 0.15f, 0.12f, 0.85f, 0.28f);
@@ -903,7 +914,7 @@ namespace Luoxia.Editor
             var closeBtn = close.AddComponent<Button>();
             closeBtn.targetGraphic = closeImg;
 
-            var message = CreateUiText("Message", modal.transform, string.Empty, 28, FontStyle.Bold, TextAnchor.UpperCenter);
+            var message = CreateUiText("Message", modal.transform, string.Empty, 28, FontStyle.Normal, TextAnchor.UpperCenter);
             SetAnchors(message.gameObject, 0.08f, 0.62f, 0.92f, 0.88f);
             message.horizontalOverflow = HorizontalWrapMode.Wrap;
             message.verticalOverflow = VerticalWrapMode.Overflow;
@@ -918,7 +929,7 @@ namespace Luoxia.Editor
             var goLookImg = AddImage(goLook, Map("button_event_choice_normal_9slice.png"), Image.Type.Sliced, Color.white);
             var goLookBtn = goLook.AddComponent<Button>();
             goLookBtn.targetGraphic = goLookImg;
-            var goLookLabel = CreateUiText("Label", goLook.transform, "去看看", 26, FontStyle.Bold, TextAnchor.MiddleCenter);
+            var goLookLabel = CreateUiText("Label", goLook.transform, "去看看", 26, FontStyle.Normal, TextAnchor.MiddleCenter);
             Stretch(goLookLabel.gameObject);
 
             var forceEnd = Create("ForceEnd", modal.transform);
@@ -926,7 +937,7 @@ namespace Luoxia.Editor
             var forceEndImg = AddImage(forceEnd, Map("button_event_choice_active_9slice.png"), Image.Type.Sliced, Color.white);
             var forceEndBtn = forceEnd.AddComponent<Button>();
             forceEndBtn.targetGraphic = forceEndImg;
-            var forceEndLabel = CreateUiText("Label", forceEnd.transform, "仍要收工", 26, FontStyle.Bold, TextAnchor.MiddleCenter);
+            var forceEndLabel = CreateUiText("Label", forceEnd.transform, "仍要收工", 26, FontStyle.Normal, TextAnchor.MiddleCenter);
             Stretch(forceEndLabel.gameObject);
 
             var panel = go.AddComponent<EndDayConfirmPanel>();
@@ -984,7 +995,7 @@ namespace Luoxia.Editor
             portraitImg.raycastTarget = false;
             portraitImg.enabled = false;
 
-            var title = CreateUiText("Title", modal.transform, string.Empty, 32, FontStyle.Bold, TextAnchor.MiddleCenter);
+            var title = CreateUiText("Title", modal.transform, string.Empty, 32, FontStyle.Normal, TextAnchor.MiddleCenter);
             SetAnchors(title.gameObject, 0.10f, 0.48f, 0.90f, 0.58f);
 
             var summary = CreateUiText("Summary", modal.transform, string.Empty, 24, FontStyle.Normal, TextAnchor.UpperCenter);
@@ -993,7 +1004,7 @@ namespace Luoxia.Editor
             summary.verticalOverflow = VerticalWrapMode.Truncate;
             summary.color = new Color(1f, 1f, 1f, 0.88f);
 
-            var cost = CreateUiText("Cost", modal.transform, string.Empty, 22, FontStyle.Bold, TextAnchor.MiddleCenter);
+            var cost = CreateUiText("Cost", modal.transform, string.Empty, 22, FontStyle.Normal, TextAnchor.MiddleCenter);
             SetAnchors(cost.gameObject, 0.10f, 0.22f, 0.90f, 0.30f);
             cost.color = new Color(1f, 0.82f, 0.45f, 0.95f);
 
@@ -1006,7 +1017,7 @@ namespace Luoxia.Editor
             var laterBtn = later.AddComponent<Button>();
             laterBtn.targetGraphic = laterImg;
             laterBtn.transition = Selectable.Transition.ColorTint;
-            var laterLabel = CreateUiText("Label", later.transform, "稍后", 28, FontStyle.Bold, TextAnchor.MiddleCenter);
+            var laterLabel = CreateUiText("Label", later.transform, "稍后", 28, FontStyle.Normal, TextAnchor.MiddleCenter);
             Stretch(laterLabel.gameObject);
 
             var open = Create("OpenButton", modal.transform);
@@ -1015,7 +1026,7 @@ namespace Luoxia.Editor
             var openBtn = open.AddComponent<Button>();
             openBtn.targetGraphic = openImg;
             openBtn.transition = Selectable.Transition.ColorTint;
-            var openLabel = CreateUiText("Label", open.transform, "开启", 28, FontStyle.Bold, TextAnchor.MiddleCenter);
+            var openLabel = CreateUiText("Label", open.transform, "开启", 28, FontStyle.Normal, TextAnchor.MiddleCenter);
             Stretch(openLabel.gameObject);
 
             var panel = go.AddComponent<EventCardConfirmPanel>();
@@ -1046,7 +1057,7 @@ namespace Luoxia.Editor
             cg.interactable = false;
             cg.blocksRaycasts = false;
 
-            var title = CreateUiText("Title", go.transform, "会话中断", 40, FontStyle.Bold, TextAnchor.MiddleCenter);
+            var title = CreateUiText("Title", go.transform, "会话中断", 40, FontStyle.Normal, TextAnchor.MiddleCenter);
             SetAnchors(title.gameObject, 0.1f, 0.62f, 0.9f, 0.72f);
             title.color = new Color(1f, 0.9f, 0.82f, 1f);
 
@@ -1058,18 +1069,18 @@ namespace Luoxia.Editor
 
             var retry = Create("FatalRetry", go.transform);
             SetAnchors(retry, 0.28f, 0.18f, 0.48f, 0.26f);
-            var retryImg = AddImage(retry, null, Image.Type.Simple, new Color(0.18f, 0.14f, 0.1f, 0.95f));
+            var retryImg = AddImage(retry, Map("button_event_choice_active_9slice.png"), Image.Type.Sliced, Color.white);
             var retryBtn = retry.AddComponent<Button>();
             retryBtn.targetGraphic = retryImg;
-            var retryLabel = CreateUiText("Label", retry.transform, "重试", 28, FontStyle.Bold, TextAnchor.MiddleCenter);
+            var retryLabel = CreateUiText("Label", retry.transform, "重试", 28, FontStyle.Normal, TextAnchor.MiddleCenter);
             Stretch(retryLabel.gameObject);
 
             var dismiss = Create("FatalDismiss", go.transform);
             SetAnchors(dismiss, 0.52f, 0.18f, 0.72f, 0.26f);
-            var dismissImg = AddImage(dismiss, null, Image.Type.Simple, new Color(0.18f, 0.14f, 0.1f, 0.95f));
+            var dismissImg = AddImage(dismiss, Map("button_event_choice_normal_9slice.png"), Image.Type.Sliced, Color.white);
             var dismissBtn = dismiss.AddComponent<Button>();
             dismissBtn.targetGraphic = dismissImg;
-            var dismissLabel = CreateUiText("Label", dismiss.transform, "关闭", 28, FontStyle.Bold, TextAnchor.MiddleCenter);
+            var dismissLabel = CreateUiText("Label", dismiss.transform, "关闭", 28, FontStyle.Normal, TextAnchor.MiddleCenter);
             Stretch(dismissLabel.gameObject);
 
             var overlay = go.AddComponent<SessionFatalOverlay>();
@@ -1098,9 +1109,9 @@ namespace Luoxia.Editor
             otherAvImg.raycastTarget = false;
             var otherBubble = Create("OtherBubble", other.transform);
             SetAnchors(otherBubble, 0.13f, 0.05f, 0.92f, 0.95f);
-            var otherBubbleBg = AddImage(otherBubble, null, Image.Type.Sliced, new Color(0.08f, 0.07f, 0.1f, 0.82f));
+            var otherBubbleBg = AddImage(otherBubble, Map("panel_avatar_name.png"), Image.Type.Sliced, Color.white);
             otherBubbleBg.raycastTarget = false;
-            var otherName = CreateUiText("OtherName", otherBubble.transform, string.Empty, 22, FontStyle.Bold, TextAnchor.UpperLeft);
+            var otherName = CreateUiText("OtherName", otherBubble.transform, string.Empty, 22, FontStyle.Normal, TextAnchor.UpperLeft);
             SetAnchors(otherName.gameObject, 0.04f, 0.62f, 0.96f, 0.95f);
             otherName.color = new Color(1f, 0.9f, 0.65f, 1f);
             var otherBody = CreateUiText("OtherBody", otherBubble.transform, "……", 24, FontStyle.Normal, TextAnchor.UpperLeft);
@@ -1118,9 +1129,10 @@ namespace Luoxia.Editor
             playerAvImg.raycastTarget = false;
             var playerBubble = Create("PlayerBubble", player.transform);
             SetAnchors(playerBubble, 0.08f, 0.05f, 0.87f, 0.95f);
-            var playerBubbleBg = AddImage(playerBubble, null, Image.Type.Sliced, new Color(0.12f, 0.1f, 0.08f, 0.82f));
+            // Warm tint separates player speech from NPC plaques.
+            var playerBubbleBg = AddImage(playerBubble, Map("panel_avatar_name.png"), Image.Type.Sliced, new Color(1f, 0.93f, 0.8f, 1f));
             playerBubbleBg.raycastTarget = false;
-            var playerName = CreateUiText("PlayerName", playerBubble.transform, string.Empty, 22, FontStyle.Bold, TextAnchor.UpperRight);
+            var playerName = CreateUiText("PlayerName", playerBubble.transform, string.Empty, 22, FontStyle.Normal, TextAnchor.UpperRight);
             SetAnchors(playerName.gameObject, 0.04f, 0.62f, 0.96f, 0.95f);
             playerName.color = new Color(1f, 0.9f, 0.65f, 1f);
             var playerBody = CreateUiText("PlayerBody", playerBubble.transform, "……", 24, FontStyle.Normal, TextAnchor.UpperRight);
@@ -1149,7 +1161,7 @@ namespace Luoxia.Editor
             le.minHeight = 130f;
             le.preferredHeight = 140f;
 
-            var bg = AddImage(root, null, Image.Type.Sliced, new Color(0.06f, 0.05f, 0.08f, 0.88f));
+            var bg = AddImage(root, Map("panel_avatar_name.png"), Image.Type.Sliced, Color.white);
             bg.raycastTarget = true;
             var rowBtn = root.AddComponent<Button>();
             rowBtn.targetGraphic = bg;
@@ -1172,7 +1184,7 @@ namespace Luoxia.Editor
             chatBadgeImg.preserveAspect = true;
             chatBadgeImg.raycastTarget = false;
 
-            var title = CreateUiText("Title", root.transform, string.Empty, 28, FontStyle.Bold, TextAnchor.MiddleLeft);
+            var title = CreateUiText("Title", root.transform, string.Empty, 28, FontStyle.Normal, TextAnchor.MiddleLeft);
             SetAnchors(title.gameObject, 0.18f, 0.52f, 0.68f, 0.92f);
 
             // Source row omitted — protocol has no event source label.
@@ -1180,7 +1192,7 @@ namespace Luoxia.Editor
             SetAnchors(source.gameObject, 0.18f, 0.32f, 0.50f, 0.52f);
             source.gameObject.SetActive(false);
 
-            var cost = CreateUiText("Cost", root.transform, string.Empty, 20, FontStyle.Bold, TextAnchor.MiddleLeft);
+            var cost = CreateUiText("Cost", root.transform, string.Empty, 20, FontStyle.Normal, TextAnchor.MiddleLeft);
             SetAnchors(cost.gameObject, 0.18f, 0.32f, 0.70f, 0.52f);
             cost.color = new Color(1f, 0.82f, 0.45f, 0.95f);
 
@@ -1198,7 +1210,7 @@ namespace Luoxia.Editor
             var openBtn = open.AddComponent<Button>();
             openBtn.targetGraphic = openImg;
             openBtn.transition = Selectable.Transition.ColorTint;
-            var openLabel = CreateUiText("OpenLabel", open.transform, "开启", 26, FontStyle.Bold, TextAnchor.MiddleCenter);
+            var openLabel = CreateUiText("OpenLabel", open.transform, "开启", 26, FontStyle.Normal, TextAnchor.MiddleCenter);
             Stretch(openLabel.gameObject);
 
             var view = root.AddComponent<EventCardItemView>();
@@ -1232,6 +1244,13 @@ namespace Luoxia.Editor
             pImg.preserveAspect = true;
             pImg.raycastTarget = false;
 
+            // Permanent portrait ring so every chip reads framed, not a bare square.
+            var ring = Create("PortraitRing", root.transform);
+            SetAnchors(ring, 0.02f, 0.22f, 0.98f, 1f);
+            var ringImg = AddImage(ring, Map("frame_event_portrait.png"), Image.Type.Simple, Color.white);
+            ringImg.preserveAspect = true;
+            ringImg.raycastTarget = false;
+
             var frame = Create("SelectedFrame", root.transform);
             SetAnchors(frame, 0f, 0.2f, 1f, 1f);
             var fImg = AddImage(frame, Map("frame_avatar_selected.png"), Image.Type.Simple, Color.white);
@@ -1243,8 +1262,12 @@ namespace Luoxia.Editor
             SetAnchors(namePlate, 0.05f, 0.0f, 0.95f, 0.28f);
             var plateImg = AddImage(namePlate, Map("panel_avatar_name.png"), Image.Type.Sliced, Color.white);
             plateImg.raycastTarget = false;
-            var name = CreateUiText("Name", namePlate.transform, string.Empty, 18, FontStyle.Normal, TextAnchor.MiddleCenter);
+            var name = CreateUiText("Name", namePlate.transform, string.Empty, 20, FontStyle.Normal, TextAnchor.MiddleCenter);
             Stretch(name.gameObject);
+            // Long dossier titles must shrink instead of wrapping into clipped lines.
+            name.resizeTextForBestFit = true;
+            name.resizeTextMinSize = 12;
+            name.resizeTextMaxSize = 20;
 
             var notif = Create("NotificationDot", root.transform);
             SetAnchors(notif, 0.72f, 0.78f, 0.92f, 0.96f);
@@ -1274,13 +1297,13 @@ namespace Luoxia.Editor
             le.minHeight = 72f;
             le.preferredHeight = 72f;
 
-            var img = AddImage(root, null, Image.Type.Sliced, new Color(0.12f, 0.1f, 0.08f, 0.92f));
+            var img = AddImage(root, Map("button_event_choice_normal_9slice.png"), Image.Type.Sliced, Color.white);
             img.raycastTarget = true;
             var btn = root.AddComponent<Button>();
             btn.targetGraphic = img;
             btn.transition = Selectable.Transition.ColorTint;
 
-            var label = CreateUiText("Label", root.transform, string.Empty, 28, FontStyle.Normal, TextAnchor.MiddleLeft);
+            var label = CreateUiText("Label", root.transform, string.Empty, 28, FontStyle.Normal, TextAnchor.MiddleCenter);
             Stretch(label.gameObject);
             var labelRt = label.GetComponent<RectTransform>();
             labelRt.offsetMin = new Vector2(16f, 4f);
@@ -1299,7 +1322,7 @@ namespace Luoxia.Editor
             img.raycastTarget = true;
             var btn = root.AddComponent<Button>();
             btn.targetGraphic = img;
-            var label = CreateUiText("Label", root.transform, string.Empty, 24, FontStyle.Bold, TextAnchor.MiddleCenter);
+            var label = CreateUiText("Label", root.transform, string.Empty, 24, FontStyle.Normal, TextAnchor.MiddleCenter);
             Stretch(label.gameObject);
             var rt = root.GetComponent<RectTransform>();
             rt.anchorMin = new Vector2(0.32f, 0.48f);
@@ -1317,7 +1340,7 @@ namespace Luoxia.Editor
             rt.anchorMax = new Vector2(index * 0.5f + 0.5f, 1f);
             rt.offsetMin = Vector2.zero;
             rt.offsetMax = Vector2.zero;
-            var tmp = CreateUiText("Label", go.transform, label, 32, FontStyle.Bold, TextAnchor.MiddleCenter);
+            var tmp = CreateUiText("Label", go.transform, label, 32, FontStyle.Normal, TextAnchor.MiddleCenter);
             Stretch(tmp.gameObject);
             // Dialogue (index 0) starts active gold; event starts inactive 55% alpha.
             tmp.color = index < 0.5f

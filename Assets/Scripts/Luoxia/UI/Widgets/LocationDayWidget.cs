@@ -25,21 +25,31 @@ namespace Luoxia.UI.Widgets
 
             if (dayTimeText != null)
             {
+                // day_cycle.day is the only advancing time fact. world_time.calendar_label
+                // is a one-shot opening label under the closed clock.advance contract
+                // (no label field), so it must not be shown as "current" time.
                 var day = view.day_cycle != null ? view.day_cycle.day : 0;
-                var label = view.world_time != null ? view.world_time.calendar_label : string.Empty;
-                if (!string.IsNullOrEmpty(label))
-                {
-                    dayTimeText.text = label;
-                }
-                else if (day > 0)
-                {
-                    dayTimeText.text = $"D{day}";
-                }
-                else
-                {
-                    dayTimeText.text = string.Empty;
-                }
+                dayTimeText.text = day > 0 ? $"第{ToCjkNumeral(day)}日" : string.Empty;
             }
+        }
+
+        private static string ToCjkNumeral(int value)
+        {
+            if (value <= 0 || value > 99)
+            {
+                return value.ToString();
+            }
+
+            const string digits = "零一二三四五六七八九";
+            if (value < 10)
+            {
+                return digits[value].ToString();
+            }
+
+            var tens = value / 10;
+            var ones = value % 10;
+            var prefix = tens == 1 ? "十" : $"{digits[tens]}十";
+            return ones == 0 ? prefix : $"{prefix}{digits[ones]}";
         }
     }
 }

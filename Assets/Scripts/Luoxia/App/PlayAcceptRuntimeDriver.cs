@@ -12,6 +12,7 @@ using Luoxia.UI.Immersion;
 using Luoxia.UI.Screens;
 using Luoxia.UI.Widgets;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 namespace Luoxia.App
@@ -74,6 +75,7 @@ namespace Luoxia.App
             yield return Capture("02-after-avatar-select.png");
             CheckDialogueInputAndPortrait();
             CheckAvatarTint();
+            yield return VerifyInputClickFocus();
 
             var view0 = GetLatestView();
             var baseRemain = view0?.event_budget != null ? view0.event_budget.remaining : -1;
@@ -316,6 +318,7 @@ namespace Luoxia.App
             Check("CommandFeedback not pending after map.move", !IsCommandFeedbackPending());
             var map = FindObjectOfType<MapDestinationPanel>(true);
             Check("MapDestinationPanel closed after map.move", map != null && !map.IsOpen);
+            CheckSceneFollowsLocation("after map.move");
 
             yield return Capture("08-after-map-move.png");
         }
@@ -1233,6 +1236,26 @@ namespace Luoxia.App
             var dialogue = FindObjectOfType<DialogueFeaturePanel>(true);
             var inputBar = GetSerialized<CanvasGroup>(dialogue, "inputBarGroup");
             Check("dialogue InputBar visible (alpha≈1)", inputBar != null && inputBar.alpha > 0.9f);
+            CheckSceneFollowsLocation("boot");
+        }
+
+        /// <summary>
+        /// Scene RenderNode must be the current location's scene (subject match).
+        /// Structural only — never asserts location names or art content.
+        /// </summary>
+        private void CheckSceneFollowsLocation(string stage)
+        {
+            var view = GetLatestView();
+            var locId = view?.player_location_entity_id ?? string.Empty;
+            var sceneNode = LoreQuery.FindSceneNode(view);
+            Check(
+                $"{stage}: scene render node follows player location",
+                !string.IsNullOrEmpty(locId) &&
+                sceneNode != null &&
+                sceneNode.subject_entity_id == locId);
+            Note(
+                $"{stage} scene subject={(sceneNode != null ? sceneNode.subject_entity_id ?? "world" : "none")} " +
+                $"player_location={locId}");
         }
 
         private void ClickFirstNamedAvatar()
@@ -1257,6 +1280,12 @@ namespace Luoxia.App
             var named = new List<Button>();
             for (var i = 0; i < items.Length; i++)
             {
+                // Pooled list rows survive deactivated with stale names — never click those.
+                if (!items[i].gameObject.activeInHierarchy)
+                {
+                    continue;
+                }
+
                 var name = GetSerialized<Text>(items[i], "nameText");
                 var btn = GetSerialized<Button>(items[i], "selectButton");
                 if (btn == null || name == null || string.IsNullOrWhiteSpace(name.text))
@@ -1321,6 +1350,40 @@ namespace Luoxia.App
             {
                 Check("central portrait sprite bound after select", false);
             }
+        }
+
+        /// <summary>
+        /// Click-to-focus regression guard: the InputField must own a raycastable
+        /// Graphic (child texts are raycastTarget=false, so without one taps fall
+        /// through), and a delivered pointer click must focus the field.
+        /// Screen-point raycasts are unreliable against editor Game view scaling,
+        /// so the hit surface is asserted structurally.
+        /// </summary>
+        private IEnumerator VerifyInputClickFocus()
+        {
+            var dialogue = FindObjectOfType<DialogueFeaturePanel>(true);
+            var input = GetSerialized<InputField>(dialogue, "inputField");
+            var eventSystem = EventSystem.current;
+            if (input == null || eventSystem == null)
+            {
+                Check("InputField owns raycastable hit Graphic", false);
+                yield break;
+            }
+
+            var hitGraphic = input.GetComponent<Graphic>();
+            Check(
+                "InputField owns raycastable hit Graphic",
+                hitGraphic != null && hitGraphic.raycastTarget);
+
+            var pointer = new PointerEventData(eventSystem);
+            ExecuteEvents.Execute(
+                input.gameObject, pointer, ExecuteEvents.pointerClickHandler);
+            // ActivateInputField applies on the following update tick.
+            yield return null;
+            yield return null;
+            Check("InputField focused after click", input.isFocused);
+            input.DeactivateInputField();
+            yield return null;
         }
 
         private void CheckAvatarTint()
