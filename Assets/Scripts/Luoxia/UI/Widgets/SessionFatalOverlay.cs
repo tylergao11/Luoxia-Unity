@@ -7,7 +7,8 @@ namespace Luoxia.UI.Widgets
     /// <summary>
     /// Full-screen blocker for SessionReplica Fatal / severe protocol errors.
     /// Not a toast — Play cannot continue until retry / leave.
-    /// terminalToProvision (recoverability=fatal): hide session retry; only path is provision/open.
+    /// terminalToProvision (recoverability=fatal): session retry hidden; button「重新开局」
+    /// triggers in-Play POST /provision/new-play (no Exit Play → Editor menu).
     /// </summary>
     public sealed class SessionFatalOverlay : MonoBehaviour
     {
@@ -80,7 +81,7 @@ namespace Luoxia.UI.Widgets
 
             if (retryButtonLabel != null)
             {
-                retryButtonLabel.text = allowSessionRetry ? "重试" : "返回开局";
+                retryButtonLabel.text = allowSessionRetry ? "重试" : "重新开局";
             }
 
             if (_fadeRoutine != null)

@@ -55,6 +55,23 @@ namespace Luoxia.Net
             _presentation.UnknownMessageReceived += HandleUnknown;
         }
 
+        /// <summary>
+        /// Drop presentation subscriptions before Host replaces this bridge
+        /// (reconnect / in-Play reprovision). Safe to call more than once.
+        /// </summary>
+        public void DetachPresentation()
+        {
+            if (_presentation == null)
+            {
+                return;
+            }
+
+            _presentation.DialogueReplyReceived -= HandleDialogueReply;
+            _presentation.CommandResultReceived -= HandleCommandResult;
+            _presentation.ProtocolErrorReceived -= HandleProtocolError;
+            _presentation.UnknownMessageReceived -= HandleUnknown;
+        }
+
         public string SessionId => _sessionId;
         public ClientEnvelopeFactory Factory => _factory;
         public IPresentationBus Presentation => _presentation;

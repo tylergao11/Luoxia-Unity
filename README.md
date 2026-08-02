@@ -37,7 +37,7 @@ Do not hand-edit paths as identity; hash is the only key. Empty index is legal (
 
 **Provision Local** opens whatever pack Deployment provision serves. Host never hardcodes pack story, world names, or content-pack branches. AP `daily_capacity` and card costs come from ContentBundle `event_budget`; Host only projects `SessionView.event_budget` and never hardcodes capacity or spend tables.
 
-If provision fails with `runtime.kernel.model_dispatch_ambiguous`（世界导演未能就位）：本局作废，Editor 显示明确失败并只允许重新 **Provision Local**（全新 world）；禁止轮询/自动重发被阻塞的模型。Play Accept 将同款文案写入 `Artifacts/play-accept/report.txt`。
+If provision fails with `runtime.kernel.model_dispatch_ambiguous`（世界导演未能就位）：本局作废。Play 中 Fatal overlay 按钮「重新开局」会再次 `POST /provision/new-play` 并原地重建 session（无需退出 Play → 菜单）；Editor 菜单 **Provision Local** 仍可开全新 world。禁止轮询/自动重发被阻塞的模型。Play Accept 将同款文案写入 `Artifacts/play-accept/report.txt`。
 
 ## Layout
 
@@ -46,7 +46,7 @@ Assets/Scripts/Luoxia/
   App/          Bootstrap, intent router, portrait policy
   Assets/       StreamingAssetsHashSpriteResolver (hash → Sprite)
   Contracts/    SessionView / bridge DTOs (Newtonsoft)
-  Net/          HttpBridgeTransport, envelope factory
+  Net/          HttpBridgeTransport, ProvisionGatewayClient, envelope factory
   Session/      SessionReplica
   UI/           MainWorld screen, feature panels, widgets
   Editor/       UI builder + portrait setup menus
@@ -60,7 +60,7 @@ Assets/StreamingAssets/LuoxiaHash/   Deployment export (opaque)
 | Menu | Purpose |
 |------|---------|
 | Luoxia / Play / Configure Local Provision | EditorPrefs for loopback provision port/secret |
-| Luoxia / Play / Provision Local | Call Deployment `/provision/new-play` → seed bootstrap |
+| Luoxia / Play / Provision Local | Call Deployment `/provision/new-play` → seed bootstrap（Play 内 Fatal「重新开局」走同一 runtime client） |
 | Luoxia / UI / Play Accept Main World (send+confirm+map) | Batch Play Mode accept (dialogue+card+map+end-day+day2) |
 | Luoxia / UI / Accept Main World Screen | Structural (no Play) accept |
 | Luoxia / UI / Build Main World Screen | Rebuild scene + prefabs + wire slices |

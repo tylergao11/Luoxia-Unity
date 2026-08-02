@@ -12,7 +12,7 @@ namespace Luoxia.App
 {
     /// <summary>
     /// Composition root. Only Engine-backed sessions are allowed.
-    /// Use menu Luoxia/Play/Provision Local before Enter Play.
+    /// Use menu Luoxia/Play/Provision Local before Enter Play, or fatal overlay「重新开局」in Play.
     /// </summary>
     public sealed class LuoxiaClientBootstrap : MonoBehaviour
     {
@@ -48,15 +48,16 @@ namespace Luoxia.App
         private PlayerIntentRouter _intents;
         private StreamingAssetsHashSpriteResolver _sprites;
         private HttpBridgeTransport _transport;
-        /// <summary>fatal recoverability / abandoned world — overlay retry only returns to provision/open.</summary>
+        /// <summary>fatal recoverability / abandoned world — overlay retry runs in-Play reprovision.</summary>
         private bool _terminalToProvisionOnly;
         private bool _reconnectInFlight;
+        private bool _reprovisionInFlight;
 
-        private const string ModelDispatchAmbiguousCode = "runtime.kernel.model_dispatch_ambiguous";
+        private const string ModelDispatchAmbiguousCode = ProvisionGatewayClient.ModelDispatchAmbiguousCode;
         private const string AmbiguousPlayerCopy =
             "开局未完成：世界导演未能就位，本次开局已作废。你可以重新开始一局。";
         private const string TerminalProvisionCopy =
-            "会话已终止。请退出 Play，执行菜单 Luoxia/Play/Provision Local 重新开局。";
+            "会话已终止。点击「重新开局」将向 provision gateway 申请全新一局（无需退出 Play）。";
 
         private void Awake()
         {
@@ -80,8 +81,10 @@ namespace Luoxia.App
             {
                 WireUiWithoutBridge();
                 const string msg =
-                    "禁止离线开局。请先启动 Engine + Provision，再执行菜单 Luoxia/Play/Provision Local，然后 Play。";
+                    "禁止离线开局。请先启动 Engine + Provision，再执行菜单 Luoxia/Play/Provision Local，然后 Play；"
+                    + "或在 Fatal overlay 点击「重新开局」。";
                 Debug.LogError("[Bootstrap] " + msg);
+                _terminalToProvisionOnly = true;
                 mainWorldScreen?.ShowFatal("未 Provision", msg, terminalToProvision: true);
                 return;
             }
@@ -97,6 +100,7 @@ namespace Luoxia.App
         private void OnDestroy()
         {
             UnwireBridgeEvents();
+            _bridge?.DetachPresentation();
         }
 
         private void ApplyHostLocale()
@@ -111,7 +115,7 @@ namespace Luoxia.App
             if (string.IsNullOrWhiteSpace(locale))
             {
                 Debug.LogError("[Bootstrap] playerLocale required (Bootstrap field or EditorPrefs Luoxia.Provision.PlayerLocale)");
-                locale = "zh-CN";
+                locale = ProvisionGatewayClient.DefaultPlayerLocale;
             }
 
             playerLocale = locale;
@@ -201,7 +205,7 @@ namespace Luoxia.App
 
         private void HandleReconnectRequested()
         {
-            if (_reconnectInFlight)
+            if (_reconnectInFlight || _reprovisionInFlight)
             {
                 return;
             }
@@ -213,10 +217,12 @@ namespace Luoxia.App
         {
             if (_terminalToProvisionOnly)
             {
-                mainWorldScreen?.ShowFatal(
-                    "请重新开局",
-                    TerminalProvisionCopy,
-                    terminalToProvision: true);
+                if (_reprovisionInFlight)
+                {
+                    return;
+                }
+
+                StartCoroutine(ReprovisionInPlay());
                 return;
             }
 
@@ -242,48 +248,36 @@ namespace Luoxia.App
             var detail = AmbiguousPlayerCopy
                 + "\n\ncode=" + ModelDispatchAmbiguousCode
                 + "\n" + message
-                + "\n\n请退出 Play，执行 Luoxia/Play/Provision Local（全新 provision）。禁止对本局自动重试模型。";
+                + "\n\n点击「重新开局」向 provision gateway 申请全新一局。禁止对本局自动重试模型。";
             mainWorldScreen?.ShowFatal("开局未完成", detail, terminalToProvision: true);
             return true;
         }
 
-        private IEnumerator ReconnectThenResync()
+        private IEnumerator ReprovisionInPlay()
         {
-            _reconnectInFlight = true;
+            _reprovisionInFlight = true;
             try
             {
-                _replica?.ClearFatalForRetry();
-                UnwireBridgeEvents();
+                mainWorldScreen?.ShowFatal(
+                    "重新开局",
+                    "正在向 provision gateway 申请全新一局…",
+                    terminalToProvision: true);
 
-                _transport = new HttpBridgeTransport(engineBaseUrl);
-                _bridge = new BridgeSessionClient(_transport, _replica, _gate, _factory, _presentation);
-                WireBridgeEvents();
-                _intents = new PlayerIntentRouter(_replica, _gate, _selection, _bridge, _factory, this, worldId);
-                WireUi();
-
-                SessionViewDto seeded = null;
-                var serverSeq = 0;
-                if (mode == SessionSourceMode.EngineWithInitialView &&
-                    !string.IsNullOrWhiteSpace(initialServerEnvelopesJson) &&
-                    TryParseInitialView(initialServerEnvelopesJson, out seeded, out serverSeq))
+                if (!ProvisionGatewayClient.TryLoadLocalSettings(out var settings, out var loadError))
                 {
-                    // Re-attach identity; authoritative view comes from resync/ready below.
+                    mainWorldScreen?.ShowFatal(
+                        "重新开局失败",
+                        loadError + "\n\n" + TerminalProvisionCopy,
+                        terminalToProvision: true);
+                    yield break;
                 }
 
-                _bridge.AttachSession(sessionId, seeded, serverSeq);
+                var locale = !string.IsNullOrWhiteSpace(playerLocale)
+                    ? playerLocale.Trim()
+                    : settings.PlayerLocale;
+                var playerName = ResolvePlayerNameForProvision(settings);
 
-                Task<SessionViewDto> task;
-                if (_replica != null &&
-                    _replica.HasView &&
-                    !string.IsNullOrEmpty(_replica.CurrentView?.basis_token))
-                {
-                    task = _bridge.ResyncAsync();
-                }
-                else
-                {
-                    task = _bridge.SendReadyAsync();
-                }
-
+                var task = ProvisionGatewayClient.ProvisionNewPlayAsync(settings, locale, playerName);
                 while (!task.IsCompleted)
                 {
                     yield return null;
@@ -291,17 +285,173 @@ namespace Luoxia.App
 
                 if (task.IsFaulted)
                 {
-                    var msg = task.Exception?.GetBaseException().Message ?? "reconnect failed";
-                    _terminalToProvisionOnly = true;
-                    mainWorldScreen?.ShowFatal("重连失败", msg + "\n\n" + TerminalProvisionCopy, terminalToProvision: true);
+                    var msg = task.Exception?.GetBaseException().Message ?? "provision failed";
+                    mainWorldScreen?.ShowFatal(
+                        "重新开局失败",
+                        msg + "\n\n" + TerminalProvisionCopy,
+                        terminalToProvision: true);
                     yield break;
                 }
+
+                var outcome = task.Result;
+                if (!outcome.Ok)
+                {
+                    var detail = outcome.IsAmbiguous
+                        ? AmbiguousPlayerCopy + "\n\n" + outcome.FormatDetail()
+                          + "\n\n点击「重新开局」再试一局。禁止对本局自动重试模型。"
+                        : outcome.FormatDetail() + "\n\n" + TerminalProvisionCopy;
+                    mainWorldScreen?.ShowFatal(
+                        outcome.IsAmbiguous ? "开局未完成" : "重新开局失败",
+                        detail,
+                        terminalToProvision: true);
+                    yield break;
+                }
+
+                engineBaseUrl = settings.EngineBaseUrl;
+                playerLocale = locale;
+                HostDisplayLocale.SetPreferred(locale);
+                sessionId = outcome.Success.SessionId;
+                worldId = outcome.Success.WorldId;
+                initialServerEnvelopesJson = outcome.Success.ServerEnvelopesJson;
+                mode = SessionSourceMode.EngineWithInitialView;
+                sendClientReadyOnStart = true;
+                _terminalToProvisionOnly = false;
+
+                yield return RebuildSessionConnection(
+                    seedFromInitialEnvelopes: true,
+                    preferResyncWhenBasisPresent: false);
+
+                Debug.Log(
+                    "[Bootstrap] in-Play reprovision ok session=" + sessionId + " world=" + worldId);
+            }
+            finally
+            {
+                _reprovisionInFlight = false;
+            }
+        }
+
+        private static string ResolvePlayerNameForProvision(ProvisionLocalSettings settings)
+        {
+            if (!string.IsNullOrWhiteSpace(settings.PlayerName))
+            {
+                return settings.PlayerName.Trim();
+            }
+
+#if UNITY_EDITOR
+            var fromPrefs = UnityEditor.EditorPrefs.GetString("Luoxia.Provision.PlayerName", string.Empty);
+            if (!string.IsNullOrWhiteSpace(fromPrefs))
+            {
+                return fromPrefs.Trim();
+            }
+#endif
+            return ProvisionGatewayClient.DefaultPlayerName;
+        }
+
+        private IEnumerator ReconnectThenResync()
+        {
+            _reconnectInFlight = true;
+            try
+            {
+                yield return RebuildSessionConnection(
+                    seedFromInitialEnvelopes: mode == SessionSourceMode.EngineWithInitialView,
+                    preferResyncWhenBasisPresent: true);
 
                 Debug.Log("[Bootstrap] recoverability=reconnect completed");
             }
             finally
             {
                 _reconnectInFlight = false;
+            }
+        }
+
+        /// <summary>
+        /// Shared Host rebuild for recoverability=reconnect and in-Play reprovision:
+        /// new transport + bridge (+ new replica/gate for brand-new session), seed, ready/resync.
+        /// </summary>
+        private IEnumerator RebuildSessionConnection(
+            bool seedFromInitialEnvelopes,
+            bool preferResyncWhenBasisPresent)
+        {
+            UnwireBridgeEvents();
+            _bridge?.DetachPresentation();
+
+            // Brand-new session identity (reprovision) must not keep the abandoned replica/gate.
+            if (!preferResyncWhenBasisPresent)
+            {
+                _replica = new SessionReplica();
+                _gate = new CommandGate();
+                _selection?.Clear();
+                _factory = new ClientEnvelopeFactory();
+                _presentation = new PresentationRouter();
+            }
+            else
+            {
+                _replica?.ClearFatalForRetry();
+            }
+
+            _transport = new HttpBridgeTransport(engineBaseUrl);
+            _bridge = new BridgeSessionClient(_transport, _replica, _gate, _factory, _presentation);
+            WireBridgeEvents();
+            _intents = new PlayerIntentRouter(_replica, _gate, _selection, _bridge, _factory, this, worldId);
+            WireUi();
+
+            SessionViewDto seeded = null;
+            var serverSeq = 0;
+            if (seedFromInitialEnvelopes &&
+                !string.IsNullOrWhiteSpace(initialServerEnvelopesJson) &&
+                TryParseInitialView(initialServerEnvelopesJson, out seeded, out serverSeq))
+            {
+                // Attach identity; authoritative view comes from ready/resync below when needed.
+            }
+            else if (seedFromInitialEnvelopes && !preferResyncWhenBasisPresent
+                     && !string.IsNullOrWhiteSpace(initialServerEnvelopesJson))
+            {
+                _terminalToProvisionOnly = true;
+                mainWorldScreen?.ShowFatal(
+                    "初始 SessionView 无效",
+                    "provision 返回的 server_envelopes 无法解析为 session.view。",
+                    terminalToProvision: true);
+                yield break;
+            }
+
+            _bridge.AttachSession(sessionId, seeded, serverSeq);
+
+            Task<SessionViewDto> task;
+            if (preferResyncWhenBasisPresent &&
+                _replica != null &&
+                _replica.HasView &&
+                !string.IsNullOrEmpty(_replica.CurrentView?.basis_token))
+            {
+                task = _bridge.ResyncAsync();
+            }
+            else
+            {
+                task = _bridge.SendReadyAsync();
+            }
+
+            while (!task.IsCompleted)
+            {
+                yield return null;
+            }
+
+            if (task.IsFaulted)
+            {
+                var msg = task.Exception?.GetBaseException().Message ?? "session rebuild failed";
+                _terminalToProvisionOnly = true;
+                if (!TryShowAmbiguousTerminal(msg))
+                {
+                    mainWorldScreen?.ShowFatal(
+                        preferResyncWhenBasisPresent ? "重连失败" : "重新开局失败",
+                        msg + "\n\n" + TerminalProvisionCopy,
+                        terminalToProvision: true);
+                }
+
+                yield break;
+            }
+
+            if (task.Result != null)
+            {
+                Debug.Log($"[Bootstrap] rebuild ready/resync ok view_revision={task.Result.view_revision}");
             }
         }
 
@@ -343,8 +493,9 @@ namespace Luoxia.App
         {
             if (string.IsNullOrEmpty(sessionId))
             {
-                const string msg = "sessionId required — run Luoxia/Play/Provision Local";
+                const string msg = "sessionId required — run Luoxia/Play/Provision Local or overlay「重新开局」";
                 Debug.LogError("[Bootstrap] " + msg);
+                _terminalToProvisionOnly = true;
                 mainWorldScreen?.ShowFatal("未 Provision", msg, terminalToProvision: true);
                 yield break;
             }
@@ -361,6 +512,7 @@ namespace Luoxia.App
                 else
                 {
                     Debug.LogError("[Bootstrap] failed to parse initialServerEnvelopesJson");
+                    _terminalToProvisionOnly = true;
                     mainWorldScreen?.ShowFatal(
                         "初始 SessionView 无效",
                         "initialServerEnvelopesJson 无法解析为 session.view，请重新 Provision。",

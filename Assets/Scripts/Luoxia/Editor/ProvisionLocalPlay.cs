@@ -1,15 +1,11 @@
 #if UNITY_EDITOR
 using System;
-using System.IO;
 using System.Threading.Tasks;
 using Luoxia.App;
-using Luoxia.Contracts;
-using Newtonsoft.Json.Linq;
+using Luoxia.Net;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
-using UnityEngine.Networking;
-using System.Text;
 
 namespace Luoxia.Editor
 {
@@ -18,6 +14,7 @@ namespace Luoxia.Editor
     /// writes LuoxiaClientBootstrap fields, and switches to EngineWithInitialView.
     /// Does not open worlds through Engine client-envelope. Pack selection is
     /// Deployment-owned — this Host never names or branches on pack_id.
+    /// HTTP + parse owned by runtime <see cref="ProvisionGatewayClient"/>.
     /// </summary>
     internal static class ProvisionLocalPlay
     {
@@ -26,14 +23,6 @@ namespace Luoxia.Editor
         private const string PrefEngineBaseUrl = "Luoxia.Engine.BaseUrl";
         private const string PrefPlayerName = "Luoxia.Provision.PlayerName";
         private const string PrefPlayerLocale = "Luoxia.Provision.PlayerLocale";
-        private const string DefaultEngineBaseUrl = "http://127.0.0.1:8000";
-        private const string DefaultPlayerLocale = "zh-CN";
-        private const string DefaultPlayerName = "试玩者";
-        private static readonly string[] DeploymentEnvCandidates =
-        {
-            @"C:\Ai\Luoxia-Deployment\.env.local",
-            Path.GetFullPath(Path.Combine(Application.dataPath, "..", "..", "Luoxia-Deployment", ".env.local")),
-        };
 
         [MenuItem("Luoxia/Play/Configure Local Provision")]
         public static void Configure()
@@ -76,71 +65,49 @@ namespace Luoxia.Editor
             string locale,
             string playerName)
         {
-            var url = $"http://127.0.0.1:{port}/provision/new-play";
-            var body = BridgeJson.Serialize(new SimplePlayerNameBody
-            {
-                locale = locale,
-                text = playerName
-            });
+            var settings = new ProvisionLocalSettings(
+                port,
+                secret,
+                engineBaseUrl,
+                locale,
+                playerName,
+                envPath: null);
 
-            using var request = new UnityWebRequest(url, UnityWebRequest.kHttpVerbPOST);
-            request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(body));
-            request.downloadHandler = new DownloadHandlerBuffer();
-            request.SetRequestHeader("Content-Type", "application/json; charset=utf-8");
-            request.SetRequestHeader("x-luoxia-provision-secret", secret);
-            request.timeout = 600;
+            var outcome = await ProvisionGatewayClient.ProvisionNewPlayAsync(settings, locale, playerName)
+                .ConfigureAwait(true);
 
-            var operation = request.SendWebRequest();
-            while (!operation.isDone)
+            if (!outcome.Ok)
             {
-                await Task.Yield();
-            }
-
-            if (request.result != UnityWebRequest.Result.Success)
-            {
-                var detail = string.IsNullOrEmpty(request.downloadHandler?.text)
-                    ? request.error
-                    : request.downloadHandler.text;
-                Debug.LogError($"[Luoxia] provision failed: {detail}");
-                if (ProvisionFaultPresentation.TryParseFaultBody(detail, out var ambiguous)
-                    && ProvisionFaultPresentation.IsModelDispatchAmbiguous(ambiguous.Code))
+                Debug.LogError($"[Luoxia] provision failed: {outcome.FormatDetail()}");
+                if (outcome.IsAmbiguous
+                    || ProvisionFaultPresentation.IsModelDispatchAmbiguous(outcome.Code)
+                    || ProvisionFaultPresentation.IsModelDispatchAmbiguous(outcome.RawBody)
+                    || ProvisionFaultPresentation.IsModelDispatchAmbiguous(outcome.Message))
                 {
-                    // Terminal: abandoned world. Offer only a brand-new Provision Local — never poll/auto-resend.
-                    ProvisionFaultPresentation.ShowAmbiguousEditorDialog(ambiguous, Provision);
+                    if (ProvisionFaultPresentation.TryParseFaultBody(outcome.RawBody ?? outcome.Message, out var ambiguous))
+                    {
+                        ProvisionFaultPresentation.ShowAmbiguousEditorDialog(ambiguous, Provision);
+                    }
+                    else
+                    {
+                        ProvisionFaultPresentation.ShowAmbiguousEditorDialog(
+                            new ProvisionFaultPresentation.ProvisionFault(
+                                ProvisionFaultPresentation.ModelDispatchAmbiguousCode,
+                                outcome.Message,
+                                null,
+                                null,
+                                outcome.RawBody ?? outcome.Message),
+                            Provision);
+                    }
+
                     return;
                 }
 
-                if (ProvisionFaultPresentation.IsModelDispatchAmbiguous(detail))
-                {
-                    ProvisionFaultPresentation.ShowAmbiguousEditorDialog(
-                        new ProvisionFaultPresentation.ProvisionFault(
-                            ProvisionFaultPresentation.ModelDispatchAmbiguousCode,
-                            null,
-                            null,
-                            null,
-                            detail),
-                        Provision);
-                    return;
-                }
-
-                EditorUtility.DisplayDialog("Luoxia Provision", $"Provision failed:\n{detail}", "OK");
+                EditorUtility.DisplayDialog("Luoxia Provision", $"Provision failed:\n{outcome.FormatDetail()}", "OK");
                 return;
             }
 
-            if (!TryParseProvisionResponse(request.downloadHandler.text, out var parsed, out var error))
-            {
-                Debug.LogError($"[Luoxia] provision response invalid: {error}");
-                if (ProvisionFaultPresentation.TryParseFaultBody(request.downloadHandler.text, out var ambiguousOkBody)
-                    && ProvisionFaultPresentation.IsModelDispatchAmbiguous(ambiguousOkBody.Code))
-                {
-                    ProvisionFaultPresentation.ShowAmbiguousEditorDialog(ambiguousOkBody, Provision);
-                    return;
-                }
-
-                EditorUtility.DisplayDialog("Luoxia Provision", $"Invalid provision response:\n{error}", "OK");
-                return;
-            }
-
+            var parsed = outcome.Success;
             Assign(bootstrap, "mode", LuoxiaClientBootstrap.SessionSourceMode.EngineWithInitialView);
             Assign(bootstrap, "engineBaseUrl", engineBaseUrl);
             Assign(bootstrap, "sessionId", parsed.SessionId);
@@ -184,7 +151,13 @@ namespace Luoxia.Editor
         /// </summary>
         private static bool TryHydratePrefsFromDeploymentEnv()
         {
-            if (!TryReadDeploymentEnv(out var port, out var secret))
+            if (!ProvisionGatewayClient.TryReadDeploymentEnv(
+                    out var port,
+                    out var secret,
+                    out var engineBaseUrl,
+                    out var locale,
+                    out var playerName,
+                    out _))
             {
                 return false;
             }
@@ -201,118 +174,32 @@ namespace Luoxia.Editor
 
             if (string.IsNullOrWhiteSpace(EditorPrefs.GetString(PrefEngineBaseUrl, string.Empty)))
             {
-                EditorPrefs.SetString(PrefEngineBaseUrl, DefaultEngineBaseUrl);
+                EditorPrefs.SetString(
+                    PrefEngineBaseUrl,
+                    string.IsNullOrWhiteSpace(engineBaseUrl)
+                        ? ProvisionGatewayClient.DefaultEngineBaseUrl
+                        : engineBaseUrl);
             }
 
             if (string.IsNullOrWhiteSpace(EditorPrefs.GetString(PrefPlayerLocale, string.Empty)))
             {
-                EditorPrefs.SetString(PrefPlayerLocale, DefaultPlayerLocale);
+                EditorPrefs.SetString(
+                    PrefPlayerLocale,
+                    string.IsNullOrWhiteSpace(locale)
+                        ? ProvisionGatewayClient.DefaultPlayerLocale
+                        : locale);
             }
 
             if (string.IsNullOrWhiteSpace(EditorPrefs.GetString(PrefPlayerName, string.Empty)))
             {
-                EditorPrefs.SetString(PrefPlayerName, DefaultPlayerName);
+                EditorPrefs.SetString(
+                    PrefPlayerName,
+                    string.IsNullOrWhiteSpace(playerName)
+                        ? ProvisionGatewayClient.DefaultPlayerName
+                        : playerName);
             }
 
             return true;
-        }
-
-        private static bool TryReadDeploymentEnv(out int port, out string secret)
-        {
-            port = 0;
-            secret = null;
-            for (var i = 0; i < DeploymentEnvCandidates.Length; i++)
-            {
-                var path = DeploymentEnvCandidates[i];
-                if (!File.Exists(path))
-                {
-                    continue;
-                }
-
-                string portText = null;
-                string secretText = null;
-                foreach (var raw in File.ReadAllLines(path, Encoding.UTF8))
-                {
-                    var line = raw?.Trim();
-                    if (string.IsNullOrEmpty(line) || line.StartsWith("#", StringComparison.Ordinal))
-                    {
-                        continue;
-                    }
-
-                    var eq = line.IndexOf('=');
-                    if (eq <= 0)
-                    {
-                        continue;
-                    }
-
-                    var key = line.Substring(0, eq).Trim();
-                    var value = line.Substring(eq + 1).Trim();
-                    if (string.Equals(key, "LUOXIA_PROVISION_PORT", StringComparison.Ordinal))
-                    {
-                        portText = value;
-                    }
-                    else if (string.Equals(key, "LUOXIA_PROVISION_SHARED_SECRET", StringComparison.Ordinal))
-                    {
-                        secretText = value;
-                    }
-                }
-
-                if (!string.IsNullOrWhiteSpace(portText)
-                    && int.TryParse(portText, out var parsedPort)
-                    && parsedPort is >= 1 and <= 65535
-                    && !string.IsNullOrWhiteSpace(secretText))
-                {
-                    port = parsedPort;
-                    secret = secretText.Trim();
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        private static bool TryParseProvisionResponse(
-            string json,
-            out ProvisionParsed parsed,
-            out string error)
-        {
-            parsed = default;
-            error = null;
-            if (string.IsNullOrWhiteSpace(json))
-            {
-                error = "empty body";
-                return false;
-            }
-
-            try
-            {
-                var root = JObject.Parse(json);
-                var sessionId = root.Value<string>("session_id");
-                var worldId = root.Value<string>("world_id");
-                var bindingId = root.Value<string>("control_binding_id");
-                var envelopes = root["server_envelopes"] as JArray;
-                if (string.IsNullOrWhiteSpace(sessionId)
-                    || string.IsNullOrWhiteSpace(worldId)
-                    || string.IsNullOrWhiteSpace(bindingId)
-                    || envelopes == null
-                    || envelopes.Count < 1)
-                {
-                    error = "missing session_id/world_id/control_binding_id/server_envelopes";
-                    return false;
-                }
-
-                parsed = new ProvisionParsed(
-                    sessionId,
-                    worldId,
-                    bindingId,
-                    envelopes.ToString(Newtonsoft.Json.Formatting.None));
-                return true;
-            }
-            catch (Exception ex)
-            {
-                error = ex.Message;
-                return false;
-            }
         }
 
         private static void Assign(UnityEngine.Object target, string fieldName, object value)
@@ -348,33 +235,6 @@ namespace Luoxia.Editor
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
-        private readonly struct ProvisionParsed
-        {
-            public ProvisionParsed(
-                string sessionId,
-                string worldId,
-                string controlBindingId,
-                string serverEnvelopesJson)
-            {
-                SessionId = sessionId;
-                WorldId = worldId;
-                ControlBindingId = controlBindingId;
-                ServerEnvelopesJson = serverEnvelopesJson;
-            }
-
-            public string SessionId { get; }
-            public string WorldId { get; }
-            public string ControlBindingId { get; }
-            public string ServerEnvelopesJson { get; }
-        }
-
-        [Serializable]
-        private sealed class SimplePlayerNameBody
-        {
-            public string locale;
-            public string text;
-        }
-
         private sealed class ProvisionSettingsWindow : EditorWindow
         {
             private int _port;
@@ -390,9 +250,15 @@ namespace Luoxia.Editor
                 window.minSize = new Vector2(420f, 260f);
                 window._port = EditorPrefs.GetInt(PrefPort, 8010);
                 window._secret = EditorPrefs.GetString(PrefSecret, string.Empty);
-                window._engineBaseUrl = EditorPrefs.GetString(PrefEngineBaseUrl, DefaultEngineBaseUrl);
-                window._locale = EditorPrefs.GetString(PrefPlayerLocale, DefaultPlayerLocale);
-                window._playerName = EditorPrefs.GetString(PrefPlayerName, DefaultPlayerName);
+                window._engineBaseUrl = EditorPrefs.GetString(
+                    PrefEngineBaseUrl,
+                    ProvisionGatewayClient.DefaultEngineBaseUrl);
+                window._locale = EditorPrefs.GetString(
+                    PrefPlayerLocale,
+                    ProvisionGatewayClient.DefaultPlayerLocale);
+                window._playerName = EditorPrefs.GetString(
+                    PrefPlayerName,
+                    ProvisionGatewayClient.DefaultPlayerName);
                 window.Show();
             }
 
@@ -409,7 +275,13 @@ namespace Luoxia.Editor
 
                 if (GUILayout.Button("从 Deployment .env.local 加载"))
                 {
-                    if (!TryReadDeploymentEnv(out var port, out var secret))
+                    if (!ProvisionGatewayClient.TryReadDeploymentEnv(
+                            out var port,
+                            out var secret,
+                            out var engineBaseUrl,
+                            out var locale,
+                            out var playerName,
+                            out _))
                     {
                         EditorUtility.DisplayDialog(
                             "Luoxia Provision",
@@ -422,17 +294,23 @@ namespace Luoxia.Editor
                         _secret = secret;
                         if (string.IsNullOrWhiteSpace(_engineBaseUrl))
                         {
-                            _engineBaseUrl = DefaultEngineBaseUrl;
+                            _engineBaseUrl = string.IsNullOrWhiteSpace(engineBaseUrl)
+                                ? ProvisionGatewayClient.DefaultEngineBaseUrl
+                                : engineBaseUrl;
                         }
 
                         if (string.IsNullOrWhiteSpace(_locale))
                         {
-                            _locale = DefaultPlayerLocale;
+                            _locale = string.IsNullOrWhiteSpace(locale)
+                                ? ProvisionGatewayClient.DefaultPlayerLocale
+                                : locale;
                         }
 
                         if (string.IsNullOrWhiteSpace(_playerName))
                         {
-                            _playerName = DefaultPlayerName;
+                            _playerName = string.IsNullOrWhiteSpace(playerName)
+                                ? ProvisionGatewayClient.DefaultPlayerName
+                                : playerName;
                         }
                     }
                 }

@@ -90,6 +90,11 @@ namespace Luoxia.UI.Immersion
             narrativeFramePlayer?.Unbind();
             stageShellOverlay?.Unbind();
             ClearAllAnchors();
+            // Rebind (reconnect / in-Play reprovision) must re-seed lore against the new session.
+            _bootstrapped = false;
+            _lastLocationEntityId = null;
+            _lastDay = 0;
+            _seenLore.ResetForSession(string.Empty);
         }
 
         public override void OnSessionView(SessionViewDto view)
