@@ -1229,7 +1229,27 @@ namespace Luoxia.App
         private void CheckBootChrome()
         {
             Check("SwipeHint absent at runtime", GameObject.Find("SwipeHint") == null);
-            Check("CloudRing absent (HUD map is circular face+ring)", GameObject.Find("CloudRing") == null);
+            var mapChrome = GameObject.Find("MapChrome");
+            var mapChromeImg = mapChrome != null ? mapChrome.GetComponent<Image>() : null;
+            Check(
+                "MapChrome uses panel_minimap (tall chassis)",
+                mapChromeImg != null
+                && mapChromeImg.sprite != null
+                && mapChromeImg.sprite.name.IndexOf("panel_minimap", StringComparison.OrdinalIgnoreCase) >= 0);
+            var cloudRing = GameObject.Find("CloudRing");
+            Check("CloudRing present (HUD map ring)", cloudRing != null);
+            var mapFace = GameObject.Find("MapFace");
+            var mapFaceRt = mapFace != null ? mapFace.GetComponent<RectTransform>() : null;
+            var minimapRt = GameObject.Find("Minimap") != null
+                ? GameObject.Find("Minimap").GetComponent<RectTransform>()
+                : null;
+            // Face must fill the ring aperture — reject tall preserveAspect strips.
+            var faceFillsRing = mapFaceRt != null
+                && minimapRt != null
+                && minimapRt.rect.width > 1f
+                && mapFaceRt.rect.width / minimapRt.rect.width >= 0.65f
+                && Mathf.Abs(mapFaceRt.rect.width - mapFaceRt.rect.height) < 2f;
+            Check("MapFace fills circular ring aperture", faceFillsRing);
             Check("FeatureChassis present (dialogue/event panel)", GameObject.Find("FeatureChassis") != null);
             Check("FeaturePagesContent present", GameObject.Find("FeaturePagesContent") != null);
             Check("EventCardConfirmPanel present", FindObjectOfType<EventCardConfirmPanel>(true) != null);
@@ -1493,8 +1513,16 @@ namespace Luoxia.App
         {
             var pages = GameObject.Find("FeaturePagesContent");
             var rt = pages != null ? pages.GetComponent<RectTransform>() : null;
-            Check("FeaturePagesContent slid to event (x≈-1080)",
-                rt != null && Mathf.Abs(rt.anchoredPosition.x + 1080f) < 8f);
+            var pageW = 0f;
+            if (rt != null && rt.childCount > 0)
+            {
+                var page = rt.GetChild(0) as RectTransform;
+                pageW = page != null ? page.sizeDelta.x : 0f;
+            }
+
+            Check(
+                "FeaturePagesContent slid to event by page width",
+                rt != null && pageW > 1f && Mathf.Abs(rt.anchoredPosition.x + pageW) < 8f);
             var dialogue = FindObjectOfType<DialogueFeaturePanel>(true);
             var inputBar = GetSerialized<CanvasGroup>(dialogue, "inputBarGroup");
             Check("InputBar hidden on event page",

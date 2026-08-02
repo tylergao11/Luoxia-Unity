@@ -79,8 +79,10 @@ namespace Luoxia.Editor
             if (pages != null)
             {
                 var pagesRt = pages.GetComponent<RectTransform>();
-                Check(report, "FeaturePagesContent width 2160",
-                    pagesRt != null && Mathf.Approximately(pagesRt.sizeDelta.x, 2160f));
+                // FeaturePages inset 0.05..0.95 → pageW=972; content holds two pages.
+                const float expectedPagesWidth = 1080f * 0.90f * 2f;
+                Check(report, "FeaturePagesContent width matches viewport pages",
+                    pagesRt != null && Mathf.Approximately(pagesRt.sizeDelta.x, expectedPagesWidth));
             }
 
             Check(report, "LayoutSlots.Avatar constant", LayoutSlots.Avatar == "avatar");

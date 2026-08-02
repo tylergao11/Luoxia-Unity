@@ -163,14 +163,7 @@ namespace Luoxia.Editor
                 return;
             }
 
-            Assign(bootstrap, "mode", LuoxiaClientBootstrap.SessionSourceMode.EngineWithInitialView);
-            Assign(bootstrap, "engineBaseUrl", engineBase);
-            Assign(bootstrap, "sessionId", provision.SessionId);
-            Assign(bootstrap, "worldId", provision.WorldId);
-            Assign(bootstrap, "playerLocale", locale);
-            Assign(bootstrap, "initialServerEnvelopesJson", provision.ServerEnvelopesJson);
-            Assign(bootstrap, "sendClientReadyOnStart", true);
-            EditorUtility.SetDirty(bootstrap);
+            ProvisionLocalPlay.ApplyBootstrapFields(bootstrap, engineBase, locale, provision);
 
             var markerPath = Path.Combine(projectRoot, PlayAcceptRuntimeDriver.MarkerFileName);
             File.WriteAllText(
@@ -267,37 +260,6 @@ namespace Luoxia.Editor
             {
                 File.Delete(stamp);
             }
-        }
-
-        private static void Assign(UnityEngine.Object target, string fieldName, object value)
-        {
-            var so = new SerializedObject(target);
-            var prop = so.FindProperty(fieldName);
-            if (prop == null)
-            {
-                Debug.LogWarning("Missing field " + target.GetType().Name + "." + fieldName);
-                return;
-            }
-
-            switch (prop.propertyType)
-            {
-                case SerializedPropertyType.String:
-                    prop.stringValue = value as string ?? string.Empty;
-                    break;
-                case SerializedPropertyType.Boolean:
-                    prop.boolValue = value is bool b && b;
-                    break;
-                case SerializedPropertyType.Enum:
-                    prop.enumValueIndex = value is Enum e
-                        ? Convert.ToInt32(e)
-                        : Convert.ToInt32(value);
-                    break;
-                default:
-                    Debug.LogWarning("Unsupported assign type for " + fieldName + ": " + prop.propertyType);
-                    return;
-            }
-
-            so.ApplyModifiedPropertiesWithoutUndo();
         }
 
         private static void Fail(string reason, bool interactive, string artifactDir)

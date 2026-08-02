@@ -44,7 +44,7 @@ Driven only by `SessionView.lore`, `render_nodes`, and Bridge presentation messa
 | `EngineWithInitialView` | Provision seeds ServerEnvelope JSON, then `client.ready` |
 | `EngineReadyOnly` | `sessionId` + `client.ready` against `engineBaseUrl` |
 
-Local play open: start Deployment `npm run start:provision`, then menu `Luoxia/Play/Configure Local Provision` + `Luoxia/Play/Provision Local`. **Host opens worlds only via the Deployment provision gateway contract** (`Luoxia-Deployment/contracts/provision-gateway.v1.md`); never through Engine `client-envelope`. Pack selection is Deployment-owned — Host never hardcodes `pack_id`, world/story names, or content branches. Bridge uses Engine `POST /api/client-envelope`.
+Local play open: first-time `Luoxia/Play/Configure Local Provision`; daily one-click `Luoxia/Play/Provision Local And Play` (ensures Engine + `start:provision`, provisions, saves, enters Play). Provision-only remains `Luoxia/Play/Provision Local`. **Host opens worlds only via the Deployment provision gateway contract** (`Luoxia-Deployment/contracts/provision-gateway.v1.md`); never through Engine `client-envelope`. Pack selection is Deployment-owned — Host never hardcodes `pack_id`, world/story names, or content branches. Bridge uses Engine `POST /api/client-envelope`.
 
 `runtime.kernel.model_dispatch_ambiguous` during provision is terminal (gateway contract): player copy 「开局未完成：世界导演未能就位…」; retry = new Provision Local only (never Resync/poll the blocked model).
 

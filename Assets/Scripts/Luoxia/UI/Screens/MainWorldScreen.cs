@@ -16,7 +16,7 @@ namespace Luoxia.UI.Screens
     /// Main 2D world shell: shared HUD + portrait layer + bottom feature tabs + immersive overlays.
     /// Composition only — no world rules / no plot hardcoding.
     /// Scene wiring is owned by MainWorldUiBuilder; this screen does not FindOrCreate chrome at Play time.
-    /// Tab + swipe share ActivateFeature → FeaturePagesContent slide (0 ↔ −1080).
+    /// Tab + swipe share ActivateFeature → FeaturePagesContent slide (0 ↔ −pageWidth).
     /// </summary>
     public sealed class MainWorldScreen : LuoxiaView
     {
@@ -359,13 +359,36 @@ namespace Luoxia.UI.Screens
                 return;
             }
 
-            var targetX = featureId == EventFeaturePanel.Id ? -1080f : 0f;
+            var targetX = featureId == EventFeaturePanel.Id ? -ResolveFeaturePageWidth() : 0f;
             if (_pageSlideRoutine != null)
             {
                 StopCoroutine(_pageSlideRoutine);
             }
 
             _pageSlideRoutine = StartCoroutine(SlidePagesTo(targetX));
+        }
+
+        /// <summary>
+        /// Page width is owned by the built FeaturePages viewport (not canvas 1080).
+        /// </summary>
+        private float ResolveFeaturePageWidth()
+        {
+            if (featurePagesContent != null && featurePagesContent.childCount > 0)
+            {
+                var page = featurePagesContent.GetChild(0) as RectTransform;
+                if (page != null && page.sizeDelta.x > 1f)
+                {
+                    return page.sizeDelta.x;
+                }
+
+                if (page != null && page.rect.width > 1f)
+                {
+                    return page.rect.width;
+                }
+            }
+
+            throw new System.InvalidOperationException(
+                "FeaturePagesContent page width unavailable; rebuild MainWorld UI.");
         }
 
         private IEnumerator SlidePagesTo(float targetX)

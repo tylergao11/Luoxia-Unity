@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Riverside ink window">
+  <defs>
+    <linearGradient id="paper" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#eee7d8"/>
+      <stop offset="1" stop-color="#d8c9ad"/>
+    </linearGradient>
+    <linearGradient id="water" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#577779" stop-opacity=".58"/>
+      <stop offset=".55" stop-color="#779392" stop-opacity=".36"/>
+      <stop offset="1" stop-color="#47686c" stop-opacity=".56"/>
+    </linearGradient>
+    <clipPath id="window">
+      <rect x="42" y="42" width="428" height="428" rx="22"/>
+    </clipPath>
+  </defs>
+  <rect width="512" height="512" rx="30" fill="#1f2626"/>
+  <rect x="18" y="18" width="476" height="476" rx="26" fill="#ae8356"/>
+  <rect x="30" y="30" width="452" height="452" rx="24" fill="#273231"/>
+  <g clip-path="url(#window)">
+    <rect x="42" y="42" width="428" height="428" fill="url(#paper)"/>
+    <circle cx="379" cy="126" r="46" fill="#c88d60" opacity=".78"/>
+    <path d="M24 267C102 199 164 205 226 249c61 44 119 42 177-6 38-31 77-36 127-17v117H24z" fill="#61716d" opacity=".35"/>
+    <path d="M-18 322c97-43 185-28 263 19 78 46 170 50 293-8v179H-18z" fill="url(#water)"/>
+    <path d="M37 363c83 16 148 15 213-4 77-22 143-19 236 8M27 400c88 12 161 9 228-10 70-20 141-16 242 12" fill="none" stroke="#e4d8c1" stroke-width="7" stroke-linecap="round" opacity=".64"/>
+    <g fill="#2f3937">
+      <path d="M92 288h133v66H92z"/>
+      <path d="m77 288 81-54 82 54z"/>
+      <path d="M112 253h92v16h-92z"/>
+      <path d="M132 311h53v43h-53z" fill="#b28a60"/>
+      <path d="M290 282h109v72H290z"/>
+      <path d="m273 282 72-49 73 49z"/>
+      <path d="M308 306h46v48h-46z" fill="#b28a60"/>
+    </g>
+    <path d="M234 332c27-5 56-5 85 0v13c-29-4-58-4-85 0z" fill="#8b5d3f"/>
+    <path d="M248 322v48M304 322v48" stroke="#4a3730" stroke-width="8"/>
+    <path d="M74 43v427M438 43v427M42 91h428M42 421h428" stroke="#263230" stroke-width="12" opacity=".9"/>
+  </g>
+</svg>

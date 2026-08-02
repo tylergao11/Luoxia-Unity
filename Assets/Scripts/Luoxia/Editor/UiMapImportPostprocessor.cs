@@ -42,10 +42,15 @@ namespace Luoxia.Editor
             {
                 importer.spriteBorder = new Vector4(0, 80, 0, 200);
             }
-            else if (file.IndexOf("button_open_all", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
-                     file.IndexOf("button_event_choice", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            else if (file.IndexOf("button_event_choice", System.StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                importer.spriteBorder = new Vector4(64, 40, 64, 40);
+                // 896×160 ornate banner: left plant + right star need ~200px caps.
+                // Old 64px borders left the filigree in the stretch zone → flattened ends.
+                importer.spriteBorder = new Vector4(200, 28, 200, 28);
+            }
+            else if (file.IndexOf("button_open_all", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                importer.spriteBorder = new Vector4(96, 32, 96, 32);
             }
             else if (file.IndexOf("deco_event_separator", System.StringComparison.OrdinalIgnoreCase) >= 0)
             {

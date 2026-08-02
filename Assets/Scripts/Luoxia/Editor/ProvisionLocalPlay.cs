@@ -33,28 +33,70 @@ namespace Luoxia.Editor
         [MenuItem("Luoxia/Play/Provision Local")]
         public static void Provision()
         {
-            TryHydratePrefsFromDeploymentEnv();
-            if (!TryReadSettings(out var port, out var secret, out var engineBaseUrl, out var locale, out var playerName))
+            if (!TryPrepareLocalSettings(
+                    out var port,
+                    out var secret,
+                    out var engineBaseUrl,
+                    out var locale,
+                    out var playerName))
             {
-                EditorUtility.DisplayDialog(
-                    "Luoxia Provision",
-                    "缺少本地 Provision 配置。请先打开 Luoxia/Play/Configure Local Provision，点「从 Deployment .env.local 加载」后 Save。",
-                    "OK");
-                ProvisionSettingsWindow.Open();
                 return;
             }
 
-            var bootstrap = UnityEngine.Object.FindObjectOfType<LuoxiaClientBootstrap>();
-            if (bootstrap == null)
+            if (!TryFindBootstrap(out var bootstrap))
+            {
+                return;
+            }
+
+            _ = RunProvisionAsync(
+                bootstrap,
+                port,
+                secret,
+                engineBaseUrl,
+                locale,
+                playerName,
+                enterPlayMode: false);
+        }
+
+        /// <summary>
+        /// One-click DX: ensure Engine + provision → Provision Local assigns → Save → Play.
+        /// Keeps Provision Local for provision-only; does not mock or invent sessions.
+        /// </summary>
+        [MenuItem("Luoxia/Play/Provision Local And Play")]
+        public static void ProvisionAndPlay()
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
             {
                 EditorUtility.DisplayDialog(
                     "Luoxia Provision",
-                    "No LuoxiaClientBootstrap in the open scene.",
+                    "Already in Play Mode. Exit Play Mode before running Provision Local And Play.",
                     "OK");
                 return;
             }
 
-            _ = RunProvisionAsync(bootstrap, port, secret, engineBaseUrl, locale, playerName);
+            if (!TryPrepareLocalSettings(
+                    out var port,
+                    out var secret,
+                    out var engineBaseUrl,
+                    out var locale,
+                    out var playerName))
+            {
+                return;
+            }
+
+            if (!TryFindBootstrap(out var bootstrap))
+            {
+                return;
+            }
+
+            _ = RunProvisionAsync(
+                bootstrap,
+                port,
+                secret,
+                engineBaseUrl,
+                locale,
+                playerName,
+                enterPlayMode: true);
         }
 
         private static async Task RunProvisionAsync(
@@ -63,51 +105,156 @@ namespace Luoxia.Editor
             string secret,
             string engineBaseUrl,
             string locale,
-            string playerName)
+            string playerName,
+            bool enterPlayMode)
         {
-            var settings = new ProvisionLocalSettings(
-                port,
-                secret,
-                engineBaseUrl,
-                locale,
-                playerName,
-                envPath: null);
-
-            var outcome = await ProvisionGatewayClient.ProvisionNewPlayAsync(settings, locale, playerName)
-                .ConfigureAwait(true);
-
-            if (!outcome.Ok)
+            try
             {
-                Debug.LogError($"[Luoxia] provision failed: {outcome.FormatDetail()}");
-                if (outcome.IsAmbiguous
-                    || ProvisionFaultPresentation.IsModelDispatchAmbiguous(outcome.Code)
-                    || ProvisionFaultPresentation.IsModelDispatchAmbiguous(outcome.RawBody)
-                    || ProvisionFaultPresentation.IsModelDispatchAmbiguous(outcome.Message))
+                if (enterPlayMode)
                 {
-                    if (ProvisionFaultPresentation.TryParseFaultBody(outcome.RawBody ?? outcome.Message, out var ambiguous))
+                    EditorUtility.DisplayProgressBar("Luoxia Local Play", "Ensuring Engine…", 0.1f);
+                    var engineEnsure = await LocalPlayBackendEnsure.EnsureEngineAsync(engineBaseUrl)
+                        .ConfigureAwait(true);
+                    if (!engineEnsure.Ok)
                     {
-                        ProvisionFaultPresentation.ShowAmbiguousEditorDialog(ambiguous, Provision);
-                    }
-                    else
-                    {
-                        ProvisionFaultPresentation.ShowAmbiguousEditorDialog(
-                            new ProvisionFaultPresentation.ProvisionFault(
-                                ProvisionFaultPresentation.ModelDispatchAmbiguousCode,
-                                outcome.Message,
-                                null,
-                                null,
-                                outcome.RawBody ?? outcome.Message),
-                            Provision);
+                        EditorUtility.ClearProgressBar();
+                        Debug.LogError("[Luoxia] Engine ensure failed: " + engineEnsure.Error);
+                        EditorUtility.DisplayDialog(
+                            "Luoxia Local Play",
+                            "Engine 未能就绪：\n" + engineEnsure.Error,
+                            "OK");
+                        return;
                     }
 
+                    EditorUtility.DisplayProgressBar("Luoxia Local Play", "Ensuring Provision…", 0.7f);
+                    var provisionEnsure = await LocalPlayBackendEnsure.EnsureProvisionAsync(port)
+                        .ConfigureAwait(true);
+                    if (!provisionEnsure.Ok)
+                    {
+                        EditorUtility.ClearProgressBar();
+                        Debug.LogError("[Luoxia] Provision ensure failed: " + provisionEnsure.Error);
+                        EditorUtility.DisplayDialog(
+                            "Luoxia Local Play",
+                            "Provision 未能就绪：\n" + provisionEnsure.Error,
+                            "OK");
+                        return;
+                    }
+
+                    EditorUtility.DisplayProgressBar("Luoxia Local Play", "Calling /provision/new-play…", 0.92f);
+                }
+
+                var settings = new ProvisionLocalSettings(
+                    port,
+                    secret,
+                    engineBaseUrl,
+                    locale,
+                    playerName,
+                    envPath: null);
+
+                var outcome = await ProvisionGatewayClient.ProvisionNewPlayAsync(settings, locale, playerName)
+                    .ConfigureAwait(true);
+
+                EditorUtility.ClearProgressBar();
+
+                if (!outcome.Ok)
+                {
+                    PresentProvisionFailure(
+                        outcome,
+                        enterPlayMode ? (Action)ProvisionAndPlay : Provision);
                     return;
                 }
 
-                EditorUtility.DisplayDialog("Luoxia Provision", $"Provision failed:\n{outcome.FormatDetail()}", "OK");
-                return;
+                var parsed = outcome.Success;
+                ApplyBootstrapFields(bootstrap, engineBaseUrl, locale, parsed);
+                EditorSceneManager.MarkSceneDirty(bootstrap.gameObject.scene);
+                Debug.Log(
+                    "[Luoxia] provisioned local play session="
+                    + parsed.SessionId
+                    + " world="
+                    + parsed.WorldId
+                    + " binding="
+                    + parsed.ControlBindingId);
+
+                if (!enterPlayMode)
+                {
+                    EditorUtility.DisplayDialog(
+                        "Luoxia Provision",
+                        "Session ready.\nsession_id="
+                        + parsed.SessionId
+                        + "\nworld_id="
+                        + parsed.WorldId
+                        + "\nEnter Play Mode against "
+                        + engineBaseUrl
+                        + ".",
+                        "OK");
+                    return;
+                }
+
+                var scene = bootstrap.gameObject.scene;
+                if (!scene.IsValid() || !EditorSceneManager.SaveScene(scene))
+                {
+                    EditorUtility.DisplayDialog(
+                        "Luoxia Local Play",
+                        "Provision succeeded but saving the open scene failed. Enter Play Mode manually after Save.",
+                        "OK");
+                    return;
+                }
+
+                Debug.Log(
+                    "[Luoxia] scene saved; entering Play Mode against "
+                    + engineBaseUrl
+                    + " session="
+                    + parsed.SessionId);
+                EditorApplication.isPlaying = true;
+            }
+            finally
+            {
+                EditorUtility.ClearProgressBar();
+            }
+        }
+
+        private static bool TryPrepareLocalSettings(
+            out int port,
+            out string secret,
+            out string engineBaseUrl,
+            out string locale,
+            out string playerName)
+        {
+            TryHydratePrefsFromDeploymentEnv();
+            if (!TryReadSettings(out port, out secret, out engineBaseUrl, out locale, out playerName))
+            {
+                EditorUtility.DisplayDialog(
+                    "Luoxia Provision",
+                    "缺少本地 Provision 配置。请先打开 Luoxia/Play/Configure Local Provision，点「从 Deployment .env.local 加载」后 Save。",
+                    "OK");
+                ProvisionSettingsWindow.Open();
+                return false;
             }
 
-            var parsed = outcome.Success;
+            return true;
+        }
+
+        private static bool TryFindBootstrap(out LuoxiaClientBootstrap bootstrap)
+        {
+            bootstrap = UnityEngine.Object.FindObjectOfType<LuoxiaClientBootstrap>();
+            if (bootstrap != null)
+            {
+                return true;
+            }
+
+            EditorUtility.DisplayDialog(
+                "Luoxia Provision",
+                "No LuoxiaClientBootstrap in the open scene.",
+                "OK");
+            return false;
+        }
+
+        internal static void ApplyBootstrapFields(
+            LuoxiaClientBootstrap bootstrap,
+            string engineBaseUrl,
+            string locale,
+            ProvisionNewPlaySuccess parsed)
+        {
             Assign(bootstrap, "mode", LuoxiaClientBootstrap.SessionSourceMode.EngineWithInitialView);
             Assign(bootstrap, "engineBaseUrl", engineBaseUrl);
             Assign(bootstrap, "sessionId", parsed.SessionId);
@@ -115,15 +262,37 @@ namespace Luoxia.Editor
             Assign(bootstrap, "playerLocale", locale);
             Assign(bootstrap, "initialServerEnvelopesJson", parsed.ServerEnvelopesJson);
             Assign(bootstrap, "sendClientReadyOnStart", true);
-
             EditorUtility.SetDirty(bootstrap);
-            EditorSceneManager.MarkSceneDirty(bootstrap.gameObject.scene);
-            Debug.Log(
-                $"[Luoxia] provisioned local play session={parsed.SessionId} world={parsed.WorldId} binding={parsed.ControlBindingId}");
-            EditorUtility.DisplayDialog(
-                "Luoxia Provision",
-                $"Session ready.\nsession_id={parsed.SessionId}\nworld_id={parsed.WorldId}\nEnter Play Mode against {engineBaseUrl}.",
-                "OK");
+        }
+
+        internal static void PresentProvisionFailure(ProvisionNewPlayOutcome outcome, Action retry)
+        {
+            Debug.LogError("[Luoxia] provision failed: " + outcome.FormatDetail());
+            if (outcome.IsAmbiguous
+                || ProvisionFaultPresentation.IsModelDispatchAmbiguous(outcome.Code)
+                || ProvisionFaultPresentation.IsModelDispatchAmbiguous(outcome.RawBody)
+                || ProvisionFaultPresentation.IsModelDispatchAmbiguous(outcome.Message))
+            {
+                if (ProvisionFaultPresentation.TryParseFaultBody(outcome.RawBody ?? outcome.Message, out var ambiguous))
+                {
+                    ProvisionFaultPresentation.ShowAmbiguousEditorDialog(ambiguous, retry);
+                }
+                else
+                {
+                    ProvisionFaultPresentation.ShowAmbiguousEditorDialog(
+                        new ProvisionFaultPresentation.ProvisionFault(
+                            ProvisionFaultPresentation.ModelDispatchAmbiguousCode,
+                            outcome.Message,
+                            null,
+                            null,
+                            outcome.RawBody ?? outcome.Message),
+                        retry);
+                }
+
+                return;
+            }
+
+            EditorUtility.DisplayDialog("Luoxia Provision", "Provision failed:\n" + outcome.FormatDetail(), "OK");
         }
 
         private static bool TryReadSettings(
@@ -202,20 +371,20 @@ namespace Luoxia.Editor
             return true;
         }
 
-        private static void Assign(UnityEngine.Object target, string fieldName, object value)
+        internal static void Assign(UnityEngine.Object target, string fieldName, object value)
         {
             var so = new SerializedObject(target);
             var prop = so.FindProperty(fieldName);
             if (prop == null)
             {
-                Debug.LogWarning($"Missing field {target.GetType().Name}.{fieldName}");
+                Debug.LogWarning("Missing field " + target.GetType().Name + "." + fieldName);
                 return;
             }
 
             switch (prop.propertyType)
             {
                 case SerializedPropertyType.String:
-                    prop.stringValue = value as string;
+                    prop.stringValue = value as string ?? string.Empty;
                     break;
                 case SerializedPropertyType.Enum:
                     if (value is Enum)
@@ -228,7 +397,7 @@ namespace Luoxia.Editor
                     prop.boolValue = value is bool flag && flag;
                     break;
                 default:
-                    Debug.LogWarning($"Unhandled property type {prop.propertyType} for {fieldName}");
+                    Debug.LogWarning("Unhandled property type " + prop.propertyType + " for " + fieldName);
                     break;
             }
 

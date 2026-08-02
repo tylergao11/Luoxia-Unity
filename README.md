@@ -26,7 +26,7 @@ Unity Host editor and package versions are locked here as deployment config. The
 1. Open `C:\Ai\Luoxia-Unity` (or this clone) in Unity Hub.
 2. Open scene `Assets/Scenes/MainWorld.unity`.
 3. Game view: **1080×1920** portrait (menu **Luoxia → Display → Set Game View 1080x1920**).
-4. **禁止离线 / Mock**。先起 Engine + `npm run start:provision`，再 **Luoxia → Play → Configure Local Provision**（首次），然后 **Luoxia → Play → Provision Local**，再 Enter Play。Host **只通过 Deployment provision gateway 合同**（`Luoxia-Deployment/contracts/provision-gateway.v1.md`）开世界；不绑定具体内容包；开哪包由 Deployment provision 决定。
+4. **禁止离线 / Mock**。首次先 **Luoxia → Play → Configure Local Provision**（从 Deployment `.env.local` 加载后 Save）。日常一键：**Luoxia → Play → Provision Local And Play**（必要时自动起 Engine + provision → 开局 → Save → Play）。也可分步：手动起后端后用 **Provision Local**，再 Enter Play。Host **只通过 Deployment provision gateway 合同**（`Luoxia-Deployment/contracts/provision-gateway.v1.md`）开世界；不绑定具体内容包；开哪包由 Deployment provision 决定。
 
 ## StreamingAssets / LuoxiaHash
 
@@ -67,6 +67,7 @@ Assets/StreamingAssets/LuoxiaHash/   Deployment export (opaque)
 |------|---------|
 | Luoxia / Play / Configure Local Provision | EditorPrefs for loopback provision port/secret |
 | Luoxia / Play / Provision Local | Call Deployment `/provision/new-play` → seed bootstrap（Play 内 Fatal「重新开局」走同一 runtime client） |
+| Luoxia / Play / Provision Local And Play | Ensure Engine + provision → same Provision Local seed → Save scene → Enter Play |
 | Luoxia / UI / Play Accept Main World (send+confirm+map) | Batch Play Mode accept (dialogue+card+map+end-day+day2) |
 | Luoxia / UI / Accept Main World Screen | Structural (no Play) accept |
 | Luoxia / UI / Build Main World Screen | Rebuild scene + prefabs + wire slices |
