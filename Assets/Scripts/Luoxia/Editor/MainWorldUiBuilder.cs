@@ -26,6 +26,8 @@ namespace Luoxia.Editor
         private const string MapArt = "Assets/Art/UI/Map";
         private const string FontPath = "Assets/Art/UI/Fonts/LuoxiaCJKSource.ttf";
         private const string BuildRequestFileName = ".luoxia-build-mainworld-request";
+        private const string AcceptRequestFileName = ".luoxia-accept-mainworld-request";
+        private const string PlayAcceptRequestFileName = ".luoxia-play-accept-request";
         private const float W = 1080f;
         private const float H = 1920f;
         /// <summary>
@@ -42,11 +44,14 @@ namespace Luoxia.Editor
             EditorApplication.update -= PollExternalBuildRequest;
             EditorApplication.update += PollExternalBuildRequest;
             EditorApplication.delayCall += TryConsumeExternalBuildRequest;
+            EditorApplication.delayCall += TryConsumeExternalAcceptRequest;
         }
 
         private static void PollExternalBuildRequest()
         {
             TryConsumeExternalBuildRequest();
+            TryConsumeExternalAcceptRequest();
+            TryConsumeExternalPlayAcceptRequest();
         }
 
         private static void TryConsumeExternalBuildRequest()
@@ -69,8 +74,82 @@ namespace Luoxia.Editor
             }
 
             EditorApplication.update -= PollExternalBuildRequest;
-            Build();
-            EditorApplication.update += PollExternalBuildRequest;
+            try
+            {
+                Build();
+            }
+            finally
+            {
+                EditorApplication.update += PollExternalBuildRequest;
+            }
+        }
+
+        private static void TryConsumeExternalAcceptRequest()
+        {
+            var requestPath = Path.Combine(
+                Directory.GetParent(Application.dataPath)?.FullName ?? string.Empty,
+                AcceptRequestFileName);
+            if (string.IsNullOrEmpty(requestPath) || !File.Exists(requestPath))
+            {
+                return;
+            }
+
+            try
+            {
+                File.Delete(requestPath);
+            }
+            catch (IOException)
+            {
+                return;
+            }
+
+            EditorApplication.update -= PollExternalBuildRequest;
+            try
+            {
+                MainWorldUiAccept.Accept();
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogError("[Luoxia] External Accept request failed: " + ex.Message);
+            }
+            finally
+            {
+                EditorApplication.update += PollExternalBuildRequest;
+            }
+        }
+
+        private static void TryConsumeExternalPlayAcceptRequest()
+        {
+            var requestPath = Path.Combine(
+                Directory.GetParent(Application.dataPath)?.FullName ?? string.Empty,
+                PlayAcceptRequestFileName);
+            if (string.IsNullOrEmpty(requestPath) || !File.Exists(requestPath))
+            {
+                return;
+            }
+
+            try
+            {
+                File.Delete(requestPath);
+            }
+            catch (IOException)
+            {
+                return;
+            }
+
+            EditorApplication.update -= PollExternalBuildRequest;
+            try
+            {
+                MainWorldPlayAccept.RunFromMenu();
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogError("[Luoxia] External Play Accept request failed: " + ex.Message);
+            }
+            finally
+            {
+                EditorApplication.update += PollExternalBuildRequest;
+            }
         }
 
         [MenuItem("Luoxia/UI/Build Main World Screen")]
@@ -185,22 +264,10 @@ namespace Luoxia.Editor
             assetErr.gameObject.SetActive(false);
             Assign(scenePortrait, "assetErrorText", assetErr);
 
-            // ── 2 BottomShell (soft atmosphere under the feature panel only) ─
+            // ── 2 BottomShell (lotus / sparkle only; mist+gradient moved into FeatureDock) ─
             var bottomShell = Create("BottomShell", designParent);
             SetAnchors(bottomShell, 0f, 0f, 1f, 0.48f);
             bottomShell.AddComponent<RectMask2D>();
-
-            var bottomGrad = Create("BottomGradient", bottomShell.transform);
-            Stretch(bottomGrad);
-            var gradImg = AddImage(bottomGrad, Map("panel_bottom_gradient_9slice.png"), Image.Type.Sliced, Color.white);
-            gradImg.raycastTarget = false;
-
-            // Mist is a soft foot fade only — never a mid-screen black cloud covering the bust.
-            var mist = Create("DialogueMist", bottomShell.transform);
-            SetAnchors(mist, 0f, 0f, 1f, 0.55f);
-            var mistImg = AddImage(mist, Map("deco_dialogue_mist.png"), Image.Type.Simple, new Color(1f, 1f, 1f, 0.55f));
-            mistImg.raycastTarget = false;
-            mistImg.preserveAspect = false;
 
             var lotus = Create("LotusWater", bottomShell.transform);
             SetAnchors(lotus, 0.05f, 0.0f, 0.95f, 0.28f);
@@ -218,70 +285,33 @@ namespace Luoxia.Editor
             // Full-screen immersion modals are created later as siblings above chrome.
             var immersionShell = BuildImmersiveShell(designParent, sceneLayer, scenePortrait, anchorPrefab);
 
-            // ── 3 FeatureDock (lower band only — matches schematic panel) ────
+            // ── 3 FeatureDock (collapsed by default; chassis + mist + dialogue + input) ─
             var featureDock = Create("FeatureDock", designParent);
             SetAnchors(featureDock, 0f, 0f, 1f, 0.48f);
+            var featureDockCg = featureDock.AddComponent<CanvasGroup>();
+            featureDockCg.blocksRaycasts = false;
+            featureDockCg.interactable = false;
 
-            // Ornate content chassis: tabs + pages sit inside this panel, not mid-bust.
+            // Sibling order (bottom→top): FeatureChassis → PanelMist → DialogueFeaturePanel → InputBar
             var featureChassis = Create("FeatureChassis", featureDock.transform);
             SetAnchors(featureChassis, 0.03f, 0.14f, 0.97f, 0.98f);
-            var chassisImg = AddImage(featureChassis, Map("panel_event_modal_9slice.png"), Image.Type.Sliced, Color.white);
+            var chassisImg = AddImage(featureChassis, Map("panel_bottom_gradient_9slice.png"), Image.Type.Sliced, Color.white);
             chassisImg.raycastTarget = false;
 
-            // Gesture zone covers chassis page area (excludes InputBar below).
-            var gestureZone = Create("GestureZone", featureDock.transform);
-            SetAnchors(gestureZone, 0.03f, 0.14f, 0.97f, 0.98f);
-            var gestureImg = AddImage(gestureZone, null, Image.Type.Simple, new Color(1f, 1f, 1f, 0f));
-            gestureImg.raycastTarget = true;
-            var swipeNav = gestureZone.AddComponent<FeatureSwipeNavigator>();
-            Assign(swipeNav, "screen", screen);
+            var artFade = Create("ArtFade", featureChassis.transform);
+            SetAnchors(artFade, 0.02f, 0.50f, 0.98f, 1.0f);
+            var artFadeImg = AddImage(artFade, Map("overlay_event_art_fade.png"), Image.Type.Simple, new Color(1f, 1f, 1f, 0.85f));
+            artFadeImg.preserveAspect = false;
+            artFadeImg.raycastTarget = false;
 
-            var tabs = Create("Tabs", featureDock.transform);
-            SetAnchors(tabs, 0.12f, 0.88f, 0.88f, 0.98f);
+            var panelMist = Create("PanelMist", featureDock.transform);
+            SetAnchors(panelMist, 0f, 0.88f, 1f, 1.26f);
+            var panelMistImg = AddImage(panelMist, Map("deco_dialogue_mist.png"), Image.Type.Simple, new Color(1f, 1f, 1f, 0.55f));
+            panelMistImg.raycastTarget = false;
+            panelMistImg.preserveAspect = false;
 
-            // Full-width baseline under both tabs.
-            var tabBase = Create("TabBaseLine", tabs.transform);
-            SetAnchors(tabBase, 0f, 0.05f, 1f, 0.2f);
-            var tabBaseImg = AddImage(tabBase, Map("deco_tab_base_line.png"), Image.Type.Sliced, Color.white);
-            tabBaseImg.raycastTarget = false;
-
-            var dialogueTab = CreateTab("DialogueTab", tabs.transform, "对话", 0f);
-            var eventTab = CreateTab("EventTab", tabs.transform, "事件", 1f);
-
-            var tabActive = Create("TabActiveMarker", dialogueTab.transform);
-            SetAnchors(tabActive, 0.15f, 0f, 0.85f, 0.28f);
-            var tabActiveImg = AddImage(tabActive, Map("deco_tab_active_marker.png"), Image.Type.Simple, Color.white);
-            tabActiveImg.preserveAspect = true;
-            tabActiveImg.raycastTarget = false;
-
-            // FeaturePages viewport is inset (0.05..0.95 of design width). Each page MUST
-            // match that width — using full canvas W=1080 overflows the mask and looks
-            // like every turn row is horizontally misaligned / clipped.
-            const float featurePagesXMin = 0.05f;
-            const float featurePagesXMax = 0.95f;
-            var pageW = W * (featurePagesXMax - featurePagesXMin);
-
-            // Horizontal feature pages: dialogue @0, event @pageW; content slides 0 ↔ −pageW.
-            var featurePages = Create("FeaturePages", featureDock.transform);
-            SetAnchors(featurePages, featurePagesXMin, 0.16f, featurePagesXMax, 0.86f);
-            featurePages.AddComponent<RectMask2D>();
-
-            var pagesContent = Create("FeaturePagesContent", featurePages.transform);
-            var pagesRt = pagesContent.GetComponent<RectTransform>();
-            pagesRt.anchorMin = new Vector2(0f, 0f);
-            pagesRt.anchorMax = new Vector2(0f, 1f);
-            pagesRt.pivot = new Vector2(0f, 0.5f);
-            pagesRt.sizeDelta = new Vector2(pageW * 2f, 0f);
-            pagesRt.anchoredPosition = Vector2.zero;
-
-            // Dialogue feature panel (page 0)
-            var dialoguePanelGo = Create("DialogueFeaturePanel", pagesContent.transform);
-            var dialoguePageRt = dialoguePanelGo.GetComponent<RectTransform>();
-            dialoguePageRt.anchorMin = new Vector2(0f, 0f);
-            dialoguePageRt.anchorMax = new Vector2(0f, 1f);
-            dialoguePageRt.pivot = new Vector2(0f, 0.5f);
-            dialoguePageRt.sizeDelta = new Vector2(pageW, 0f);
-            dialoguePageRt.anchoredPosition = Vector2.zero;
+            var dialoguePanelGo = Create("DialogueFeaturePanel", featureDock.transform);
+            SetAnchors(dialoguePanelGo, 0.05f, 0.16f, 0.95f, 0.96f);
             var dialogueCg = dialoguePanelGo.AddComponent<CanvasGroup>();
             var dialoguePanel = dialoguePanelGo.AddComponent<DialogueFeaturePanel>();
             Assign(dialoguePanel, "featureId", DialogueFeaturePanel.Id);
@@ -289,42 +319,107 @@ namespace Luoxia.Editor
             Assign(dialoguePanel, "activeRoot", dialoguePanelGo);
 
             var turnScroll = Create("TurnScroll", dialoguePanelGo.transform);
-            SetAnchors(turnScroll, 0f, 0.18f, 1f, 1f);
+            Stretch(turnScroll);
             var scroll = turnScroll.AddComponent<ScrollRect>();
             var viewport = Create("Viewport", turnScroll.transform);
             Stretch(viewport);
             viewport.AddComponent<RectMask2D>();
             var viewportHit = AddImage(viewport, null, Image.Type.Simple, new Color(1f, 1f, 1f, 0f));
             viewportHit.raycastTarget = true;
-            var turnRelay = viewport.AddComponent<DragDirectionRelay>();
-            Assign(turnRelay, "scrollRect", scroll);
-            Assign(turnRelay, "navigator", swipeNav);
-            var turnContent = Create("Content", viewport.transform);
-            Stretch(turnContent);
-            var vlg = turnContent.AddComponent<VerticalLayoutGroup>();
-            vlg.spacing = 14f;
-            vlg.padding = new RectOffset(8, 8, 8, 8);
-            vlg.childControlHeight = false;
-            vlg.childForceExpandHeight = false;
-            vlg.childControlWidth = true;
-            vlg.childForceExpandWidth = true;
-            var fitter = turnContent.AddComponent<ContentSizeFitter>();
-            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+            var content = Create("Content", viewport.transform);
+            Stretch(content);
+            var contentVlg = content.AddComponent<VerticalLayoutGroup>();
+            contentVlg.spacing = 14f;
+            contentVlg.padding = new RectOffset(8, 8, 8, 8);
+            contentVlg.childControlHeight = false;
+            contentVlg.childForceExpandHeight = false;
+            contentVlg.childControlWidth = true;
+            contentVlg.childForceExpandWidth = true;
+            var contentFitter = content.AddComponent<ContentSizeFitter>();
+            contentFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+            var turnsGroup = Create("TurnsGroup", content.transform);
+            var turnsVlg = turnsGroup.AddComponent<VerticalLayoutGroup>();
+            turnsVlg.spacing = 14f;
+            turnsVlg.childControlHeight = false;
+            turnsVlg.childForceExpandHeight = false;
+            turnsVlg.childControlWidth = true;
+            turnsVlg.childForceExpandWidth = true;
+            var turnsFitter = turnsGroup.AddComponent<ContentSizeFitter>();
+            turnsFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            var turnsLe = turnsGroup.AddComponent<LayoutElement>();
+            turnsLe.flexibleWidth = 1f;
+
+            var pendingGroup = Create("PendingCardsGroup", content.transform);
+            var pendingVlg = pendingGroup.AddComponent<VerticalLayoutGroup>();
+            pendingVlg.spacing = 10f;
+            pendingVlg.padding = new RectOffset(0, 0, 8, 4);
+            pendingVlg.childControlHeight = false;
+            pendingVlg.childForceExpandHeight = false;
+            pendingVlg.childControlWidth = true;
+            pendingVlg.childForceExpandWidth = true;
+            var pendingFitter = pendingGroup.AddComponent<ContentSizeFitter>();
+            pendingFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            var pendingLe = pendingGroup.AddComponent<LayoutElement>();
+            pendingLe.flexibleWidth = 1f;
+            pendingGroup.SetActive(false);
+
+            var pendingHeader = Create("PendingHeader", pendingGroup.transform);
+            var pendingHeaderLe = pendingHeader.AddComponent<LayoutElement>();
+            pendingHeaderLe.minHeight = 48f;
+            pendingHeaderLe.preferredHeight = 48f;
+            pendingHeader.GetComponent<RectTransform>().sizeDelta = new Vector2(0f, 48f);
+            var pendingHeaderIcon = Create("EventHeaderIcon", pendingHeader.transform);
+            SetAnchors(pendingHeaderIcon, 0.0f, 0.10f, 0.08f, 0.90f);
+            var phi = AddImage(pendingHeaderIcon, Map("deco_event_header.png"), Image.Type.Simple, Color.white);
+            phi.preserveAspect = true;
+            phi.raycastTarget = false;
+            var pendingHeaderText = CreateUiText(
+                "PendingHeaderText",
+                pendingHeader.transform,
+                "今日事件 · 待开启 0 件",
+                24,
+                FontStyle.Normal,
+                TextAnchor.MiddleLeft);
+            SetAnchors(pendingHeaderText.gameObject, 0.10f, 0.05f, 1f, 0.95f);
+            pendingHeaderText.color = new Color(1f, 0.88f, 0.55f, 0.95f);
+            pendingHeaderText.resizeTextForBestFit = false;
+
+            var cardsRoot = Create("CardsRoot", pendingGroup.transform);
+            var cardsVlg = cardsRoot.AddComponent<VerticalLayoutGroup>();
+            cardsVlg.spacing = 10f;
+            cardsVlg.childControlHeight = false;
+            cardsVlg.childForceExpandHeight = false;
+            cardsVlg.childControlWidth = true;
+            cardsVlg.childForceExpandWidth = true;
+            var cardsFitter = cardsRoot.AddComponent<ContentSizeFitter>();
+            cardsFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+            var openAll = Create("OpenAllButton", pendingGroup.transform);
+            var openAllLe = openAll.AddComponent<LayoutElement>();
+            openAllLe.minHeight = 64f;
+            openAllLe.preferredHeight = 64f;
+            openAll.GetComponent<RectTransform>().sizeDelta = new Vector2(0f, 64f);
+            var openAllImg = AddImage(openAll, Map("button_open_all_9slice.png"), Image.Type.Sliced, Color.white);
+            var openAllBtn = openAll.AddComponent<Button>();
+            openAllBtn.targetGraphic = openAllImg;
+            var openAllLabel = CreateUiText("Label", openAll.transform, "全部开启", 28, FontStyle.Normal, TextAnchor.MiddleCenter);
+            FitChipLabel(openAllLabel, 0.10f, 0.18f, 0.90f, 0.82f);
+
             scroll.viewport = viewport.GetComponent<RectTransform>();
-            scroll.content = turnContent.GetComponent<RectTransform>();
+            scroll.content = content.GetComponent<RectTransform>();
             scroll.horizontal = false;
+            scroll.vertical = true;
             scroll.movementType = ScrollRect.MovementType.Clamped;
 
-            // Input bar sits under the chassis (dialogue tab only interactable).
             var inputBar = Create("InputBar", featureDock.transform);
             SetAnchors(inputBar, 0.04f, 0.01f, 0.96f, 0.13f);
             var inputBarCg = inputBar.AddComponent<CanvasGroup>();
-            var inputBg = AddImage(inputBar, Map("panel_dialogue_input_9slice.png"), Image.Type.Sliced, Color.white);
+            AddImage(inputBar, Map("panel_dialogue_input_9slice.png"), Image.Type.Sliced, Color.white);
 
             var inputGo = Create("InputField", inputBar.transform);
             SetAnchors(inputGo, 0.04f, 0.15f, 0.78f, 0.85f);
-            // Invisible hit surface — child texts are raycastTarget=false, so the
-            // InputField itself must own a raycastable Graphic to receive focus taps.
             var inputHit = AddImage(inputGo, null, Image.Type.Simple, new Color(1f, 1f, 1f, 0f));
             inputHit.raycastTarget = true;
             var inputField = inputGo.AddComponent<InputField>();
@@ -332,13 +427,16 @@ namespace Luoxia.Editor
             var textArea = Create("Text Area", inputGo.transform);
             Stretch(textArea);
             textArea.AddComponent<RectMask2D>();
-            // CJK has no italics; faux-italic slant reads as rendering damage.
-            var placeholder = CreateUiText("Placeholder", textArea.transform, string.Empty, 24, FontStyle.Normal, TextAnchor.MiddleLeft);
+            var placeholder = CreateUiText("Placeholder", textArea.transform, string.Empty, 30, FontStyle.Normal, TextAnchor.MiddleLeft);
             placeholder.color = new Color(1f, 1f, 1f, 0.35f);
-            FitChipLabel(placeholder, 0.02f, 0.08f, 0.98f, 0.92f, bestFitMin: 14, bestFitMax: 24);
-            var inputText = CreateUiText("Text", textArea.transform, string.Empty, 24, FontStyle.Normal, TextAnchor.MiddleLeft);
+            FitChipLabel(placeholder, 0.02f, 0.08f, 0.98f, 0.92f);
+            placeholder.resizeTextForBestFit = false;
+            placeholder.fontSize = 30;
+            var inputText = CreateUiText("Text", textArea.transform, string.Empty, 30, FontStyle.Normal, TextAnchor.MiddleLeft);
             inputText.supportRichText = false;
-            FitChipLabel(inputText, 0.02f, 0.08f, 0.98f, 0.92f, bestFitMin: 14, bestFitMax: 24);
+            FitChipLabel(inputText, 0.02f, 0.08f, 0.98f, 0.92f);
+            inputText.resizeTextForBestFit = false;
+            inputText.fontSize = 30;
             inputField.textComponent = inputText;
             inputField.placeholder = placeholder;
 
@@ -350,88 +448,26 @@ namespace Luoxia.Editor
             sendBtn.targetGraphic = sendImg;
 
             Assign(dialoguePanel, "turnPrefab", turnPrefab.GetComponent<DialogueTurnItemView>());
-            Assign(dialoguePanel, "turnContent", turnContent.transform);
+            Assign(dialoguePanel, "turnContent", turnsGroup.transform);
+            Assign(dialoguePanel, "cardItemPrefab", eventItemPrefab.GetComponent<EventCardItemView>());
+            Assign(dialoguePanel, "pendingCardsRoot", cardsRoot.transform);
+            Assign(dialoguePanel, "pendingCardsGroup", pendingGroup);
+            Assign(dialoguePanel, "pendingCardsHeaderText", pendingHeaderText);
+            Assign(dialoguePanel, "openAllButton", openAllBtn);
             Assign(dialoguePanel, "inputField", inputField);
             Assign(dialoguePanel, "sendButton", sendBtn);
             Assign(dialoguePanel, "inputPlaceholder", placeholder);
             Assign(dialoguePanel, "scrollRect", scroll);
             Assign(dialoguePanel, "inputBarGroup", inputBarCg);
 
-            // Event feature panel (page 1 at x=pageW)
-            var eventPanelGo = Create("EventFeaturePanel", pagesContent.transform);
-            var eventPageRt = eventPanelGo.GetComponent<RectTransform>();
-            eventPageRt.anchorMin = new Vector2(0f, 0f);
-            eventPageRt.anchorMax = new Vector2(0f, 1f);
-            eventPageRt.pivot = new Vector2(0f, 0.5f);
-            eventPageRt.sizeDelta = new Vector2(pageW, 0f);
-            eventPageRt.anchoredPosition = new Vector2(pageW, 0f);
-            var eventCg = eventPanelGo.AddComponent<CanvasGroup>();
-            eventCg.alpha = 1f;
-            eventCg.interactable = false;
-            eventCg.blocksRaycasts = false;
-            var eventPanel = eventPanelGo.AddComponent<EventFeaturePanel>();
-            Assign(eventPanel, "featureId", EventFeaturePanel.Id);
-            Assign(eventPanel, "canvasGroup", eventCg);
-            Assign(eventPanel, "activeRoot", eventPanelGo);
+            featureChassis.transform.SetSiblingIndex(0);
+            panelMist.transform.SetSiblingIndex(1);
+            dialoguePanelGo.transform.SetSiblingIndex(2);
+            inputBar.transform.SetSiblingIndex(3);
 
-            var eventHeaderIcon = Create("EventHeaderIcon", eventPanelGo.transform);
-            SetAnchors(eventHeaderIcon, 0.02f, 0.90f, 0.10f, 0.99f);
-            var ehi = AddImage(eventHeaderIcon, Map("deco_event_header.png"), Image.Type.Simple, Color.white);
-            ehi.preserveAspect = true;
-            ehi.raycastTarget = false;
-
-            var eventHeader = CreateUiText("EventHeader", eventPanelGo.transform, "今日事件", 30, FontStyle.Normal, TextAnchor.MiddleLeft);
-            SetAnchors(eventHeader.gameObject, 0.12f, 0.90f, 0.55f, 1f);
-            var eventCount = CreateUiText("EventCount", eventPanelGo.transform, "待开启 0 件", 24, FontStyle.Normal, TextAnchor.MiddleRight);
-            SetAnchors(eventCount.gameObject, 0.55f, 0.90f, 0.98f, 1f);
-            eventCount.color = new Color(1f, 0.88f, 0.55f, 0.95f);
-
-            var eventScroll = Create("EventScroll", eventPanelGo.transform);
-            SetAnchors(eventScroll, 0f, 0.16f, 1f, 0.88f);
-            var eScroll = eventScroll.AddComponent<ScrollRect>();
-            var eViewport = Create("Viewport", eventScroll.transform);
-            Stretch(eViewport);
-            eViewport.AddComponent<RectMask2D>();
-            var eViewportHit = AddImage(eViewport, null, Image.Type.Simple, new Color(1f, 1f, 1f, 0f));
-            eViewportHit.raycastTarget = true;
-            var eventRelay = eViewport.AddComponent<DragDirectionRelay>();
-            Assign(eventRelay, "scrollRect", eScroll);
-            Assign(eventRelay, "navigator", swipeNav);
-            var eContent = Create("Content", eViewport.transform);
-            Stretch(eContent);
-            var eVlg = eContent.AddComponent<VerticalLayoutGroup>();
-            eVlg.spacing = 10f;
-            eVlg.padding = new RectOffset(4, 4, 4, 4);
-            eVlg.childControlHeight = false;
-            eVlg.childForceExpandHeight = false;
-            eVlg.childControlWidth = true;
-            eVlg.childForceExpandWidth = true;
-            var eFitter = eContent.AddComponent<ContentSizeFitter>();
-            eFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-            eScroll.viewport = eViewport.GetComponent<RectTransform>();
-            eScroll.content = eContent.GetComponent<RectTransform>();
-            eScroll.horizontal = false;
-
-            var openAll = Create("OpenAllButton", eventPanelGo.transform);
-            SetAnchors(openAll, 0.18f, 0.0f, 0.82f, 0.13f);
-            // pageW×0.64 ≈ 622 ≥ slice floor — open_all 9-slice is safe.
-            var openAllImg = AddImage(openAll, Map("button_open_all_9slice.png"), Image.Type.Sliced, Color.white);
-            var openAllBtn = openAll.AddComponent<Button>();
-            openAllBtn.targetGraphic = openAllImg;
-            var openAllLabel = CreateUiText("Label", openAll.transform, "全部开启", 28, FontStyle.Normal, TextAnchor.MiddleCenter);
-            FitChipLabel(openAllLabel, 0.10f, 0.18f, 0.90f, 0.82f);
-
-            Assign(eventPanel, "itemPrefab", eventItemPrefab.GetComponent<EventCardItemView>());
-            Assign(eventPanel, "contentRoot", eContent.transform);
-            Assign(eventPanel, "headerCountText", eventCount);
-            Assign(eventPanel, "openAllButton", openAllBtn);
-
-            // Chassis at back; gesture under pages; tabs/input on top for hit priority.
-            featureChassis.transform.SetAsFirstSibling();
-            gestureZone.transform.SetSiblingIndex(1);
-            featurePages.transform.SetAsLastSibling();
-            tabs.transform.SetAsLastSibling();
-            inputBar.transform.SetAsLastSibling();
+            // Default collapsed: slide dock below its own height.
+            var dockRt = featureDock.GetComponent<RectTransform>();
+            dockRt.anchoredPosition = new Vector2(0f, -(H * 0.48f));
 
             // ── 4 HudTop ────────────────────────────────────────────────────
             var hudTop = Create("HudTop", designParent);
@@ -530,9 +566,11 @@ namespace Luoxia.Editor
             var badgeIconImg = AddImage(badgeIcon, Map("icon_event_badge.png"), Image.Type.Simple, Color.white);
             badgeIconImg.preserveAspect = true;
             badgeIconImg.raycastTarget = false;
-            // Scaffold placeholder until SessionView binds; BestFit covers dynamic N / empty copy.
-            var badgeLabel = CreateUiText("BadgeText", badge.transform, "今日有0件事待处理", 20, FontStyle.Normal, TextAnchor.MiddleLeft);
-            FitChipLabel(badgeLabel, 0.14f, 0.16f, 0.86f, 0.84f, bestFitMin: 14, bestFitMax: 20);
+            // Scaffold placeholder until SessionView binds; fixed 22 — no BestFit.
+            var badgeLabel = CreateUiText("BadgeText", badge.transform, "今日有0件事待处理", 22, FontStyle.Normal, TextAnchor.MiddleLeft);
+            FitChipLabel(badgeLabel, 0.14f, 0.16f, 0.86f, 0.84f);
+            badgeLabel.resizeTextForBestFit = false;
+            badgeLabel.fontSize = 22;
             badgeLabel.horizontalOverflow = HorizontalWrapMode.Overflow;
             var chevron = Create("Chevron", badge.transform);
             SetAnchors(chevron, 0.88f, 0.22f, 0.98f, 0.78f);
@@ -552,7 +590,7 @@ namespace Luoxia.Editor
             var hlg = avatarContent.AddComponent<HorizontalLayoutGroup>();
             hlg.spacing = 18f;
             hlg.padding = new RectOffset(8, 8, 4, 4);
-            hlg.childAlignment = TextAnchor.MiddleRight;
+            hlg.childAlignment = TextAnchor.MiddleLeft;
             hlg.childControlWidth = false;
             hlg.childControlHeight = false;
             hlg.childForceExpandWidth = false;
@@ -627,7 +665,7 @@ namespace Luoxia.Editor
 
             // ── 7 EventCardConfirmPanel (local modal; 稍后 = dismiss only) ───
             var confirmPanel = BuildEventCardConfirmPanel(designParent);
-            Assign(eventPanel, "confirmPanel", confirmPanel);
+            Assign(dialoguePanel, "confirmPanel", confirmPanel);
 
             // ── 7b EndDayConfirmPanel (pending EventCards) ───────────────────
             var endDayConfirm = BuildEndDayConfirmPanel(designParent);
@@ -658,15 +696,11 @@ namespace Luoxia.Editor
             Assign(screen, "endDayPrimarySprite", endDayPrimarySprite);
             Assign(screen, "commandFeedback", toast);
             Assign(screen, "fatalOverlay", fatal);
-            Assign(screen, "dialogueTabButton", dialogueTab);
-            Assign(screen, "eventTabButton", eventTab);
-            Assign(screen, "tabActiveMarker", tabActive.GetComponent<RectTransform>());
-            Assign(screen, "featurePagesContent", pagesRt);
+            Assign(screen, "featureDock", featureDock.GetComponent<RectTransform>());
+            Assign(screen, "featureDockGroup", featureDockCg);
             Assign(screen, "dialoguePanel", dialoguePanel);
-            Assign(screen, "eventPanel", eventPanel);
             Assign(screen, "eventCardConfirmPanel", confirmPanel);
             Assign(screen, "endDayConfirmPanel", endDayConfirm);
-            Assign(screen, "defaultFeatureId", DialogueFeaturePanel.Id);
             Assign(screen, "mapDestinationPanel", mapPanel);
 
             Assign(bootstrap, "mainWorldScreen", screen);
@@ -1214,12 +1248,12 @@ namespace Luoxia.Editor
 
         private static GameObject BuildDialogueTurnPrefab()
         {
-            // Width follows VerticalLayoutGroup parent (feature page ≈972); height fits 3–4 CJK lines.
+            // Width follows VerticalLayoutGroup parent; height set dynamically in OnBind.
             var root = Create("DialogueTurnItem", null);
-            root.GetComponent<RectTransform>().sizeDelta = new Vector2(0f, 168f);
+            root.GetComponent<RectTransform>().sizeDelta = new Vector2(0f, 132f);
             var le = root.AddComponent<LayoutElement>();
-            le.minHeight = 140f;
-            le.preferredHeight = 168f;
+            le.minHeight = 132f;
+            le.preferredHeight = 132f;
             le.flexibleWidth = 1f;
 
             var other = Create("OtherRoot", root.transform);
@@ -1234,34 +1268,57 @@ namespace Luoxia.Editor
             var otherBubbleBg = AddImage(otherBubble, Map("panel_avatar_name.png"), Image.Type.Sliced, Color.white);
             otherBubbleBg.raycastTarget = false;
             var otherName = CreateUiText("OtherName", otherBubble.transform, string.Empty, 22, FontStyle.Normal, TextAnchor.UpperLeft);
-            SetAnchors(otherName.gameObject, 0.05f, 0.68f, 0.95f, 0.96f);
+            var otherNameRt = otherName.GetComponent<RectTransform>();
+            otherNameRt.anchorMin = new Vector2(0f, 1f);
+            otherNameRt.anchorMax = new Vector2(1f, 1f);
+            otherNameRt.pivot = new Vector2(0.5f, 1f);
+            otherNameRt.offsetMin = new Vector2(24f, -46f);
+            otherNameRt.offsetMax = new Vector2(-24f, -12f);
             otherName.color = new Color(1f, 0.9f, 0.65f, 1f);
-            var otherBody = CreateUiText("OtherBody", otherBubble.transform, "……", 24, FontStyle.Normal, TextAnchor.UpperLeft);
-            SetAnchors(otherBody.gameObject, 0.05f, 0.08f, 0.95f, 0.66f);
+            otherName.resizeTextForBestFit = false;
+            var otherBody = CreateUiText("OtherBody", otherBubble.transform, "……", 26, FontStyle.Normal, TextAnchor.UpperLeft);
+            var otherBodyRt = otherBody.GetComponent<RectTransform>();
+            otherBodyRt.anchorMin = Vector2.zero;
+            otherBodyRt.anchorMax = Vector2.one;
+            otherBodyRt.offsetMin = new Vector2(24f, 18f);
+            otherBodyRt.offsetMax = new Vector2(-24f, -50f);
             otherBody.horizontalOverflow = HorizontalWrapMode.Wrap;
-            otherBody.verticalOverflow = VerticalWrapMode.Truncate;
+            otherBody.verticalOverflow = VerticalWrapMode.Overflow;
+            otherBody.resizeTextForBestFit = false;
+            otherBody.fontSize = 26;
 
             var player = Create("PlayerRoot", root.transform);
             Stretch(player);
             player.SetActive(false);
             var playerAvatar = Create("PlayerAvatar", player.transform);
-            SetAnchors(playerAvatar, 0.89f, 0.20f, 0.99f, 0.92f);
+            // A3: avatar left-aligned for player turns as well.
+            SetAnchors(playerAvatar, 0.01f, 0.20f, 0.11f, 0.92f);
             var playerAvImg = AddImage(playerAvatar, Map("frame_event_portrait.png"), Image.Type.Simple, Color.white);
             playerAvImg.preserveAspect = true;
             playerAvImg.raycastTarget = false;
             var playerBubble = Create("PlayerBubble", player.transform);
-            SetAnchors(playerBubble, 0.02f, 0.06f, 0.88f, 0.94f);
-            // Warm tint separates player speech from NPC plaques.
+            SetAnchors(playerBubble, 0.12f, 0.06f, 0.98f, 0.94f);
             var playerBubbleBg = AddImage(playerBubble, Map("panel_avatar_name.png"), Image.Type.Sliced, new Color(1f, 0.93f, 0.8f, 1f));
             playerBubbleBg.raycastTarget = false;
-            // Left-align body copy — UpperRight left a large empty gutter (reads as "全部错位").
             var playerName = CreateUiText("PlayerName", playerBubble.transform, string.Empty, 22, FontStyle.Normal, TextAnchor.UpperLeft);
-            SetAnchors(playerName.gameObject, 0.05f, 0.68f, 0.95f, 0.96f);
+            var playerNameRt = playerName.GetComponent<RectTransform>();
+            playerNameRt.anchorMin = new Vector2(0f, 1f);
+            playerNameRt.anchorMax = new Vector2(1f, 1f);
+            playerNameRt.pivot = new Vector2(0.5f, 1f);
+            playerNameRt.offsetMin = new Vector2(24f, -46f);
+            playerNameRt.offsetMax = new Vector2(-24f, -12f);
             playerName.color = new Color(1f, 0.9f, 0.65f, 1f);
-            var playerBody = CreateUiText("PlayerBody", playerBubble.transform, "……", 24, FontStyle.Normal, TextAnchor.UpperLeft);
-            SetAnchors(playerBody.gameObject, 0.05f, 0.08f, 0.95f, 0.66f);
+            playerName.resizeTextForBestFit = false;
+            var playerBody = CreateUiText("PlayerBody", playerBubble.transform, "……", 26, FontStyle.Normal, TextAnchor.UpperLeft);
+            var playerBodyRt = playerBody.GetComponent<RectTransform>();
+            playerBodyRt.anchorMin = Vector2.zero;
+            playerBodyRt.anchorMax = Vector2.one;
+            playerBodyRt.offsetMin = new Vector2(24f, 18f);
+            playerBodyRt.offsetMax = new Vector2(-24f, -50f);
             playerBody.horizontalOverflow = HorizontalWrapMode.Wrap;
-            playerBody.verticalOverflow = VerticalWrapMode.Truncate;
+            playerBody.verticalOverflow = VerticalWrapMode.Overflow;
+            playerBody.resizeTextForBestFit = false;
+            playerBody.fontSize = 26;
 
             var view = root.AddComponent<DialogueTurnItemView>();
             Assign(view, "playerRoot", player);
@@ -1272,6 +1329,7 @@ namespace Luoxia.Editor
             Assign(view, "otherBodyText", otherBody);
             Assign(view, "playerPortrait", playerAvImg);
             Assign(view, "otherPortrait", otherAvImg);
+            Assign(view, "layoutElement", le);
 
             return SavePrefab(root, $"{PrefabRoot}/DialogueTurnItem.prefab");
         }
@@ -1308,20 +1366,27 @@ namespace Luoxia.Editor
             chatBadgeImg.raycastTarget = false;
 
             var title = CreateUiText("Title", root.transform, string.Empty, 24, FontStyle.Normal, TextAnchor.MiddleLeft);
-            FitChipLabel(title, 0.18f, 0.52f, 0.68f, 0.92f, bestFitMin: 16, bestFitMax: 24);
+            FitChipLabel(title, 0.18f, 0.52f, 0.68f, 0.92f);
+            title.resizeTextForBestFit = false;
+            title.fontSize = 24;
             title.horizontalOverflow = HorizontalWrapMode.Overflow;
 
             // Source row omitted — protocol has no event source label.
             var source = CreateUiText("Source", root.transform, string.Empty, 18, FontStyle.Normal, TextAnchor.MiddleLeft);
             FitChipLabel(source, 0.18f, 0.32f, 0.50f, 0.52f);
+            source.resizeTextForBestFit = false;
             source.gameObject.SetActive(false);
 
             var cost = CreateUiText("Cost", root.transform, string.Empty, 18, FontStyle.Normal, TextAnchor.MiddleLeft);
-            FitChipLabel(cost, 0.18f, 0.32f, 0.70f, 0.52f, bestFitMin: 12, bestFitMax: 18);
+            FitChipLabel(cost, 0.18f, 0.32f, 0.70f, 0.52f);
+            cost.resizeTextForBestFit = false;
+            cost.fontSize = 18;
             cost.color = new Color(1f, 0.82f, 0.45f, 0.95f);
 
             var summary = CreateUiText("Summary", root.transform, string.Empty, 18, FontStyle.Normal, TextAnchor.UpperLeft);
-            FitChipLabel(summary, 0.18f, 0.06f, 0.70f, 0.34f, bestFitMin: 12, bestFitMax: 18);
+            FitChipLabel(summary, 0.18f, 0.06f, 0.70f, 0.34f);
+            summary.resizeTextForBestFit = false;
+            summary.fontSize = 18;
             summary.horizontalOverflow = HorizontalWrapMode.Wrap;
             summary.color = new Color(1f, 1f, 1f, 0.8f);
 
@@ -1398,7 +1463,9 @@ namespace Luoxia.Editor
             var plateImg = AddImage(namePlate, Map("panel_avatar_name.png"), Image.Type.Sliced, Color.white);
             plateImg.raycastTarget = false;
             var name = CreateUiText("Name", namePlate.transform, string.Empty, 20, FontStyle.Normal, TextAnchor.MiddleCenter);
-            FitChipLabel(name, 0.06f, 0.12f, 0.94f, 0.88f, bestFitMin: 12, bestFitMax: 20);
+            FitChipLabel(name, 0.06f, 0.12f, 0.94f, 0.88f);
+            name.resizeTextForBestFit = false;
+            name.fontSize = 20;
             name.horizontalOverflow = HorizontalWrapMode.Overflow;
 
             var notif = Create("NotificationDot", root.transform);
@@ -1437,7 +1504,9 @@ namespace Luoxia.Editor
             btn.transition = Selectable.Transition.ColorTint;
 
             var label = CreateUiText("Label", root.transform, string.Empty, 26, FontStyle.Normal, TextAnchor.MiddleCenter);
-            FitChipLabel(label, 0.06f, 0.16f, 0.94f, 0.84f, bestFitMin: 16, bestFitMax: 26);
+            FitChipLabel(label, 0.06f, 0.16f, 0.94f, 0.84f);
+            label.resizeTextForBestFit = false;
+            label.fontSize = 26;
             label.horizontalOverflow = HorizontalWrapMode.Overflow;
             label.color = new Color(1f, 0.95f, 0.85f, 1f);
             label.raycastTarget = false;
@@ -1462,28 +1531,6 @@ namespace Luoxia.Editor
             rt.offsetMin = Vector2.zero;
             rt.offsetMax = Vector2.zero;
             return SavePrefab(root, $"{PrefabRoot}/InteractionAnchorButton.prefab");
-        }
-
-        private static Button CreateTab(string name, Transform parent, string label, float index)
-        {
-            var go = Create(name, parent);
-            var rt = go.GetComponent<RectTransform>();
-            rt.anchorMin = new Vector2(index * 0.5f, 0.25f);
-            rt.anchorMax = new Vector2(index * 0.5f + 0.5f, 1f);
-            rt.offsetMin = Vector2.zero;
-            rt.offsetMax = Vector2.zero;
-            var tmp = CreateUiText("Label", go.transform, label, 28, FontStyle.Normal, TextAnchor.MiddleCenter);
-            FitChipLabel(tmp, 0.08f, 0.22f, 0.92f, 0.95f);
-            // Dialogue (index 0) starts active gold; event starts inactive 55% alpha.
-            tmp.color = index < 0.5f
-                ? new Color(1f, 0.84f, 0.4f, 1f)
-                : new Color(1f, 0.95f, 0.85f, 0.55f);
-            // Transparent hit target so tab text can receive clicks via Button.
-            var hit = AddImage(go, null, Image.Type.Simple, new Color(1f, 1f, 1f, 0f));
-            hit.raycastTarget = true;
-            var btn = go.AddComponent<Button>();
-            btn.targetGraphic = hit;
-            return btn;
         }
 
         private static void EnsureFolders()

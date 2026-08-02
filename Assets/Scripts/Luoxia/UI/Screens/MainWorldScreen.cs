@@ -1,5 +1,4 @@
-﻿using System.Collections;
-using Luoxia.Assets;
+﻿using Luoxia.Assets;
 using Luoxia.Contracts;
 using Luoxia.Net;
 using Luoxia.Session;
@@ -13,15 +12,13 @@ using UnityEngine.UI;
 namespace Luoxia.UI.Screens
 {
     /// <summary>
-    /// Main 2D world shell: shared HUD + portrait layer + bottom feature tabs + immersive overlays.
+    /// Main 2D world shell: shared HUD + portrait layer + collapsible FeatureDock + immersive overlays.
     /// Composition only — no world rules / no plot hardcoding.
     /// Scene wiring is owned by MainWorldUiBuilder; this screen does not FindOrCreate chrome at Play time.
-    /// Tab + swipe share ActivateFeature → FeaturePagesContent slide (0 ↔ −pageWidth).
+    /// Dock expands on avatar selection or RevealPendingCards (badge / EndDay「去看看」).
     /// </summary>
     public sealed class MainWorldScreen : LuoxiaView
     {
-        private static readonly Color TabActiveColor = new Color(1f, 0.84f, 0.4f, 1f);
-        private static readonly Color TabInactiveColor = new Color(1f, 0.95f, 0.85f, 0.55f);
         private static readonly Color EndDayIdleLabel = new Color(1f, 0.95f, 0.85f, 0.85f);
         private static readonly Color EndDayPrimaryLabel = new Color(1f, 0.98f, 0.9f, 1f);
 
@@ -40,17 +37,12 @@ namespace Luoxia.UI.Screens
         [SerializeField] private CommandFeedbackHud commandFeedback;
         [SerializeField] private SessionFatalOverlay fatalOverlay;
 
-        [Header("Feature tabs")]
-        [SerializeField] private Button dialogueTabButton;
-        [SerializeField] private Button eventTabButton;
-        [SerializeField] private RectTransform tabActiveMarker;
-        [SerializeField] private RectTransform featurePagesContent;
-        [SerializeField] private float pageSlideSeconds = 0.2f;
+        [Header("Feature dock")]
+        [SerializeField] private RectTransform featureDock;
+        [SerializeField] private CanvasGroup featureDockGroup;
         [SerializeField] private DialogueFeaturePanel dialoguePanel;
-        [SerializeField] private EventFeaturePanel eventPanel;
         [SerializeField] private EventCardConfirmPanel eventCardConfirmPanel;
         [SerializeField] private EndDayConfirmPanel endDayConfirmPanel;
-        [SerializeField] private string defaultFeatureId = DialogueFeaturePanel.Id;
 
         [Header("Map")]
         [SerializeField] private MapDestinationPanel mapDestinationPanel;
@@ -68,14 +60,15 @@ namespace Luoxia.UI.Screens
         private ICommandGate _gate;
         private ISessionReplica _replica;
         private System.Action _fatalRetry;
-        private IFeaturePanel[] _panels;
-        private string _activeFeatureId;
         private bool _commandLocked;
         private bool _playerPhase = true;
         private bool _hasDialogueBudget = true;
-        private Coroutine _pageSlideRoutine;
+        private bool _cardsViewRequested;
+        private int _trackedDay = int.MinValue;
+        private bool _dockExpanded;
 
-        public string ActiveFeatureId => _activeFeatureId;
+        /// <summary>Always dialogue after event-page merge; kept for Play Accept probes.</summary>
+        public string ActiveFeatureId => DialogueFeaturePanel.Id;
 
         /// <summary>
         /// Wire pure C# services from app composition root (not Unity singletons).
@@ -97,6 +90,7 @@ namespace Luoxia.UI.Screens
             _fatalRetry = fatalRetry;
             BindGate(gate);
             BindReplica(replica);
+            BindSelection(_selection);
 
             if (spriteResolver != null)
             {
@@ -104,12 +98,11 @@ namespace Luoxia.UI.Screens
                 scenePortraitLayer?.SetSpriteResolver(spriteResolver);
             }
 
-            dialoguePanel?.Configure(_intents, _selection);
-            eventPanel?.Configure(_intents, eventCardConfirmPanel);
+            dialoguePanel?.Configure(_intents, _selection, eventCardConfirmPanel, gate);
             eventCardConfirmPanel?.Configure(_intents);
             mapDestinationPanel?.Configure(_intents);
             avatarRailWidget?.Configure(_selection, _intents, HandleInspectSubject);
-            eventBadgeBar?.Configure(_intents, () => ActivateFeature(EventFeaturePanel.Id));
+            eventBadgeBar?.Configure(_intents, RevealPendingCards);
             fatalOverlay?.Configure(HandleFatalRetry);
 
             if (immersiveShell != null)
@@ -126,14 +119,11 @@ namespace Luoxia.UI.Screens
                 scenePortraitLayer?.SetSubjectInspectHandler(HandleInspectSubject);
             }
 
-            _panels = CollectPanels();
-
             BindSession(session);
             BindChildren(session);
 
-            ActivateFeature(string.IsNullOrEmpty(defaultFeatureId)
-                ? DialogueFeaturePanel.Id
-                : defaultFeatureId);
+            dialoguePanel?.SetActiveFeature(true);
+            ApplyDockExpanded(ComputeDockExpanded());
             RefreshCommandLockUi();
         }
 
@@ -163,18 +153,34 @@ namespace Luoxia.UI.Screens
             fatalOverlay?.Hide();
         }
 
+        /// <summary>
+        /// Badge / EndDay「去看看」: request cards view, expand dock, scroll to pending block.
+        /// </summary>
+        public void RevealPendingCards()
+        {
+            _cardsViewRequested = true;
+            ApplyDockExpanded(ComputeDockExpanded());
+            dialoguePanel?.ScrollToPendingCards();
+        }
+
+        /// <summary>
+        /// Compatibility entry used by Play Accept. Event id maps to RevealPendingCards;
+        /// dialogue id refreshes dock from selection.
+        /// </summary>
+        public void ActivateFeature(string featureId)
+        {
+            if (featureId == "event")
+            {
+                RevealPendingCards();
+                return;
+            }
+
+            dialoguePanel?.SetActiveFeature(true);
+            ApplyDockExpanded(ComputeDockExpanded());
+        }
+
         protected override void OnBound()
         {
-            if (dialogueTabButton != null)
-            {
-                dialogueTabButton.onClick.AddListener(() => ActivateFeature(DialogueFeaturePanel.Id));
-            }
-
-            if (eventTabButton != null)
-            {
-                eventTabButton.onClick.AddListener(() => ActivateFeature(EventFeaturePanel.Id));
-            }
-
             if (mapButton != null)
             {
                 mapButton.onClick.AddListener(HandleMap);
@@ -188,16 +194,6 @@ namespace Luoxia.UI.Screens
 
         protected override void OnUnbound()
         {
-            if (dialogueTabButton != null)
-            {
-                dialogueTabButton.onClick.RemoveAllListeners();
-            }
-
-            if (eventTabButton != null)
-            {
-                eventTabButton.onClick.RemoveAllListeners();
-            }
-
             if (mapButton != null)
             {
                 mapButton.onClick.RemoveAllListeners();
@@ -210,6 +206,7 @@ namespace Luoxia.UI.Screens
 
             UnbindGate();
             UnbindReplica();
+            UnbindSelection();
             narrativeFramePlayer?.Unbind();
             stageShellOverlay?.Unbind();
         }
@@ -221,10 +218,59 @@ namespace Luoxia.UI.Screens
             // Opening EventCards stays unlocked (开卡不锁).
             _hasDialogueBudget = view?.event_budget == null || view.event_budget.remaining > 0;
             InvalidateStaleDialogueSelection(view);
+            SyncCardsViewRequest(view);
             // View replace clears pending toast only (_locked); does not wipe ShowError.
             commandFeedback?.ClearPending();
             eventCardConfirmPanel?.OnSessionView(view);
+            ApplyDockExpanded(ComputeDockExpanded());
             RefreshCommandLockUi();
+        }
+
+        private void SyncCardsViewRequest(SessionViewDto view)
+        {
+            var day = view?.day_cycle != null ? view.day_cycle.day : -1;
+            if (_trackedDay == int.MinValue)
+            {
+                _trackedDay = day;
+            }
+            else if (day != _trackedDay)
+            {
+                _trackedDay = day;
+                _cardsViewRequested = false;
+            }
+
+            if (CountAvailableCards(view) == 0)
+            {
+                _cardsViewRequested = false;
+            }
+        }
+
+        private bool ComputeDockExpanded()
+        {
+            var available = CountAvailableCards(LatestView);
+            return (_selection != null && _selection.Current != null) ||
+                   (_cardsViewRequested && available > 0);
+        }
+
+        private void ApplyDockExpanded(bool expanded)
+        {
+            _dockExpanded = expanded;
+            if (featureDock == null || featureDockGroup == null)
+            {
+                return;
+            }
+
+            Canvas.ForceUpdateCanvases();
+            var h = featureDock.rect.height;
+            if (h < 1f)
+            {
+                h = 1920f * 0.48f;
+            }
+
+            var x = featureDock.anchoredPosition.x;
+            featureDock.anchoredPosition = new Vector2(x, expanded ? 0f : -h);
+            featureDockGroup.blocksRaycasts = expanded;
+            featureDockGroup.interactable = expanded;
         }
 
         /// <summary>
@@ -325,143 +371,31 @@ namespace Luoxia.UI.Screens
             return false;
         }
 
-        public void ActivateFeature(string featureId)
+        private void BindSelection(IDialogueSelection selection)
         {
-            _activeFeatureId = featureId;
-            if (_panels == null)
+            UnbindSelection();
+            _selection = selection;
+            if (_selection == null)
             {
                 return;
             }
 
-            for (var i = 0; i < _panels.Length; i++)
-            {
-                var panel = _panels[i];
-                if (panel == null)
-                {
-                    continue;
-                }
-
-                var active = panel.FeatureId == featureId ||
-                             (featureId == DialogueFeaturePanel.Id && panel is DialogueFeaturePanel) ||
-                             (featureId == EventFeaturePanel.Id && panel is EventFeaturePanel);
-                panel.SetActiveFeature(active);
-            }
-
-            MoveTabMarker(featureId);
-            ApplyTabChrome(featureId);
-            SlideFeaturePages(featureId);
+            _selection.Changed += HandleSelectionChanged;
         }
 
-        private void SlideFeaturePages(string featureId)
+        private void UnbindSelection()
         {
-            if (featurePagesContent == null)
+            if (_selection == null)
             {
                 return;
             }
 
-            var targetX = featureId == EventFeaturePanel.Id ? -ResolveFeaturePageWidth() : 0f;
-            if (_pageSlideRoutine != null)
-            {
-                StopCoroutine(_pageSlideRoutine);
-            }
-
-            _pageSlideRoutine = StartCoroutine(SlidePagesTo(targetX));
+            _selection.Changed -= HandleSelectionChanged;
         }
 
-        /// <summary>
-        /// Page width is owned by the built FeaturePages viewport (not canvas 1080).
-        /// </summary>
-        private float ResolveFeaturePageWidth()
+        private void HandleSelectionChanged(DialogueTarget? target)
         {
-            if (featurePagesContent != null && featurePagesContent.childCount > 0)
-            {
-                var page = featurePagesContent.GetChild(0) as RectTransform;
-                if (page != null && page.sizeDelta.x > 1f)
-                {
-                    return page.sizeDelta.x;
-                }
-
-                if (page != null && page.rect.width > 1f)
-                {
-                    return page.rect.width;
-                }
-            }
-
-            throw new System.InvalidOperationException(
-                "FeaturePagesContent page width unavailable; rebuild MainWorld UI.");
-        }
-
-        private IEnumerator SlidePagesTo(float targetX)
-        {
-            var duration = Mathf.Clamp(pageSlideSeconds, 0.15f, 0.25f);
-            var start = featurePagesContent.anchoredPosition;
-            var end = new Vector2(targetX, start.y);
-            var t = 0f;
-            while (t < duration)
-            {
-                t += Time.unscaledDeltaTime;
-                var u = Mathf.Clamp01(t / duration);
-                // Ease-out quad.
-                var eased = 1f - (1f - u) * (1f - u);
-                featurePagesContent.anchoredPosition = Vector2.Lerp(start, end, eased);
-                yield return null;
-            }
-
-            featurePagesContent.anchoredPosition = end;
-            _pageSlideRoutine = null;
-        }
-
-        private void MoveTabMarker(string featureId)
-        {
-            if (tabActiveMarker == null)
-            {
-                return;
-            }
-
-            RectTransform target = null;
-            if (featureId == DialogueFeaturePanel.Id && dialogueTabButton != null)
-            {
-                target = dialogueTabButton.transform as RectTransform;
-            }
-            else if (featureId == EventFeaturePanel.Id && eventTabButton != null)
-            {
-                target = eventTabButton.transform as RectTransform;
-            }
-
-            if (target == null)
-            {
-                return;
-            }
-
-            tabActiveMarker.SetParent(target, false);
-            tabActiveMarker.anchorMin = new Vector2(0.15f, 0f);
-            tabActiveMarker.anchorMax = new Vector2(0.85f, 0.28f);
-            tabActiveMarker.offsetMin = Vector2.zero;
-            tabActiveMarker.offsetMax = Vector2.zero;
-            tabActiveMarker.SetAsLastSibling();
-        }
-
-        private void ApplyTabChrome(string featureId)
-        {
-            SetTabLabelColor(dialogueTabButton, featureId == DialogueFeaturePanel.Id);
-            SetTabLabelColor(eventTabButton, featureId == EventFeaturePanel.Id);
-        }
-
-        private static void SetTabLabelColor(Button tab, bool active)
-        {
-            if (tab == null)
-            {
-                return;
-            }
-
-            var label = tab.GetComponentInChildren<Text>(true);
-            if (label == null)
-            {
-                return;
-            }
-
-            label.color = active ? TabActiveColor : TabInactiveColor;
-            label.fontSize = 32;
+            ApplyDockExpanded(ComputeDockExpanded());
         }
 
         private void BindGate(ICommandGate gate)
@@ -570,10 +504,10 @@ namespace Luoxia.UI.Screens
         private void RefreshCommandLockUi()
         {
             var canMutate = !_commandLocked;
+            // Budget exhaustion locks dialogue input only; EventCard open stays available.
             dialoguePanel?.SetBudgetExhausted(!_hasDialogueBudget);
-            // No EventBudget remaining: dialogue locked; EventCard open stays available; player_day.end stays available.
-            dialoguePanel?.SetCommandInteractable(canMutate && _hasDialogueBudget);
-            eventPanel?.SetCommandInteractable(canMutate);
+            dialoguePanel?.SetCommandInteractable(canMutate);
+
             eventCardConfirmPanel?.SetCommandLocked(_commandLocked);
 
             if (endDayButton != null)
@@ -624,7 +558,6 @@ namespace Luoxia.UI.Screens
             BindChild(avatarRailWidget, session);
             BindChild(scenePortraitLayer, session);
             BindChild(dialoguePanel, session);
-            BindChild(eventPanel, session);
             BindChild(dossierPanel, session);
             BindChild(immersiveShell, session);
             BindChild(mapDestinationPanel, session);
@@ -633,15 +566,6 @@ namespace Luoxia.UI.Screens
         private static void BindChild(ISessionViewBinder binder, ISessionViewSource session)
         {
             binder?.BindSession(session);
-        }
-
-        private IFeaturePanel[] CollectPanels()
-        {
-            return new IFeaturePanel[]
-            {
-                dialoguePanel,
-                eventPanel
-            };
         }
 
         private void HandleMap()
@@ -683,7 +607,27 @@ namespace Luoxia.UI.Screens
             endDayConfirmPanel.TryOpen(
                 pending,
                 onForceEnd: () => _intents?.TryEndPlayerDay(),
-                onGoLook: () => ActivateFeature(EventFeaturePanel.Id));
+                onGoLook: RevealPendingCards);
+        }
+
+        private static int CountAvailableCards(SessionViewDto view)
+        {
+            if (view?.event_cards == null)
+            {
+                return 0;
+            }
+
+            var n = 0;
+            for (var i = 0; i < view.event_cards.Count; i++)
+            {
+                var card = view.event_cards[i];
+                if (card != null && card.IsAvailable)
+                {
+                    n++;
+                }
+            }
+
+            return n;
         }
 
         private static System.Collections.Generic.List<EventCardViewDto> CollectAvailableCardsForCurrentDay(

@@ -125,7 +125,6 @@ npm run export:unity-hash
             issues += WarnMissing<MainWorldScreen>("MainWorldScreen");
             issues += WarnMissing<ImmersiveShellController>("ImmersiveShell");
             issues += WarnMissing<SessionFatalOverlay>("SessionFatalOverlay");
-            issues += WarnMissing<FeatureSwipeNavigator>("FeatureSwipeNavigator");
             issues += WarnMissing<EventCardConfirmPanel>("EventCardConfirmPanel");
             issues += WarnMissing<EndDayConfirmPanel>("EndDayConfirmPanel");
             issues += WarnMissing<CommandFeedbackHud>("CommandFeedbackHud");
@@ -141,7 +140,7 @@ npm run export:unity-hash
                 issues += WarnNullRef(so, "fatalOverlay", "MainWorldScreen.fatalOverlay");
                 issues += WarnNullRef(so, "endDayButton", "MainWorldScreen.endDayButton");
                 issues += WarnNullRef(so, "dialoguePanel", "MainWorldScreen.dialoguePanel");
-                issues += WarnNullRef(so, "eventPanel", "MainWorldScreen.eventPanel");
+                issues += WarnNullRef(so, "featureDock", "MainWorldScreen.featureDock");
                 issues += WarnNullRef(so, "eventCardConfirmPanel", "MainWorldScreen.eventCardConfirmPanel");
                 issues += WarnNullRef(so, "endDayConfirmPanel", "MainWorldScreen.endDayConfirmPanel");
                 issues += WarnNullRef(so, "immersiveShell", "MainWorldScreen.immersiveShell");

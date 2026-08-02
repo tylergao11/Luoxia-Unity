@@ -126,6 +126,12 @@ namespace Luoxia.UI.Immersion
                         continue;
                     }
 
+                    // Chat stream owns dialogue quotes; narrative modal must not echo them.
+                    if (segment.IsDialogueQuote)
+                    {
+                        continue;
+                    }
+
                     var body = segment.ResolveDisplayText();
                     if (string.IsNullOrEmpty(body))
                     {
@@ -165,8 +171,6 @@ namespace Luoxia.UI.Immersion
                     return "系统";
                 case "notice":
                     return "提示";
-                case "dialogue_quote":
-                    return "对话";
                 default:
                     return string.Empty;
             }

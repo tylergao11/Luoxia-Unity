@@ -15,6 +15,9 @@ namespace Luoxia.UI.Features
 
     public sealed class DialogueTurnItemView : ListItemView<DialogueTurnItemModel>
     {
+        private const float MinHeight = 132f;
+        private const float HeightChrome = 68f;
+
         [SerializeField] private GameObject playerRoot;
         [SerializeField] private GameObject otherRoot;
         [SerializeField] private Text playerNameText;
@@ -23,6 +26,7 @@ namespace Luoxia.UI.Features
         [SerializeField] private Text otherBodyText;
         [SerializeField] private Image playerPortrait;
         [SerializeField] private Image otherPortrait;
+        [SerializeField] private LayoutElement layoutElement;
 
         protected override void OnBind(DialogueTurnItemModel model, int index)
         {
@@ -52,6 +56,7 @@ namespace Luoxia.UI.Features
                 }
 
                 ApplyPortraitOrKeepChrome(playerPortrait, model.Portrait);
+                ApplyDynamicHeight(playerBodyText, body);
             }
             else
             {
@@ -66,7 +71,35 @@ namespace Luoxia.UI.Features
                 }
 
                 ApplyPortraitOrKeepChrome(otherPortrait, model.Portrait);
+                ApplyDynamicHeight(otherBodyText, body);
             }
+        }
+
+        private void ApplyDynamicHeight(Text bodyText, string body)
+        {
+            var le = layoutElement != null ? layoutElement : GetComponent<LayoutElement>();
+            if (le == null || bodyText == null)
+            {
+                return;
+            }
+
+            bodyText.text = body ?? string.Empty;
+            Canvas.ForceUpdateCanvases();
+            var width = bodyText.rectTransform.rect.width;
+            if (width < 8f)
+            {
+                width = 600f;
+            }
+
+            var settings = bodyText.GetGenerationSettings(new Vector2(width, 0f));
+            settings.generateOutOfBounds = true;
+            settings.horizontalOverflow = HorizontalWrapMode.Wrap;
+            settings.verticalOverflow = VerticalWrapMode.Overflow;
+            var generator = new TextGenerator();
+            generator.Populate(bodyText.text, settings);
+            var bodyH = generator.GetPreferredHeight(bodyText.text, settings);
+            le.minHeight = MinHeight;
+            le.preferredHeight = Mathf.Max(MinHeight, HeightChrome + bodyH);
         }
 
         private static void ApplyPortraitOrKeepChrome(Image image, Sprite portrait)

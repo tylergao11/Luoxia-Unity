@@ -83,6 +83,8 @@ namespace Luoxia.App
             var baseTurns = CountDialogueTurns(view0);
 
             SendDialogueLine();
+            // Optimistic send: player echo + thinking ghost should appear before SessionView lands.
+            CheckOptimisticSendChrome();
             var deadline = Time.realtimeSinceStartup + DialogueWaitSec;
             var cardOrBudget = false;
             while (Time.realtimeSinceStartup < deadline)
@@ -130,10 +132,10 @@ namespace Luoxia.App
             yield return Capture("03b-budget-exhausted.png");
             AssertBudgetExhaustedUx();
 
-            FindObjectOfType<MainWorldScreen>()?.ActivateFeature(EventFeaturePanel.Id);
+            FindObjectOfType<MainWorldScreen>()?.RevealPendingCards();
             yield return new WaitForSecondsRealtime(0.55f);
-            yield return Capture("04-event-page.png");
-            CheckEventPage();
+            yield return Capture("04-pending-cards.png");
+            CheckPendingCardsReveal();
 
             if (CountAvailableCards(GetLatestView()) > 0 && TryOpenFirstEventConfirm())
             {
@@ -1250,14 +1252,29 @@ namespace Luoxia.App
                 && mapFaceRt.rect.width / minimapRt.rect.width >= 0.65f
                 && Mathf.Abs(mapFaceRt.rect.width - mapFaceRt.rect.height) < 2f;
             Check("MapFace fills circular ring aperture", faceFillsRing);
-            Check("FeatureChassis present (dialogue/event panel)", GameObject.Find("FeatureChassis") != null);
-            Check("FeaturePagesContent present", GameObject.Find("FeaturePagesContent") != null);
+            Check("FeatureChassis present (dialogue panel)", GameObject.Find("FeatureChassis") != null);
+            Check("FeaturePagesContent removed", GameObject.Find("FeaturePagesContent") == null);
+            Check("EventFeaturePanel removed", GameObject.Find("EventFeaturePanel") == null);
+            Check("PanelMist present", GameObject.Find("PanelMist") != null);
+            // PendingCardsGroup starts inactive (no available cards) — Find misses inactive nodes.
+            var dialogueBoot = FindObjectOfType<DialogueFeaturePanel>(true);
+            var pendingBoot = dialogueBoot != null
+                ? dialogueBoot.transform.Find("TurnScroll/Viewport/Content/PendingCardsGroup")
+                : null;
+            Check("PendingCardsGroup present", pendingBoot != null);
             Check("EventCardConfirmPanel present", FindObjectOfType<EventCardConfirmPanel>(true) != null);
             Check("SessionFatalOverlay not blocking boot",
                 !IsOverlayBlocking(FindObjectOfType<SessionFatalOverlay>(true)));
+            var dock = GameObject.Find("FeatureDock");
+            var dockCg = dock != null ? dock.GetComponent<CanvasGroup>() : null;
+            var dockRt = dock != null ? dock.GetComponent<RectTransform>() : null;
+            Check("FeatureDock collapsed at boot (blocksRaycasts=false)",
+                dockCg != null && !dockCg.blocksRaycasts);
+            Check("FeatureDock collapsed at boot (anchoredPosition.y < 0)",
+                dockRt != null && dockRt.anchoredPosition.y < -1f);
             var dialogue = FindObjectOfType<DialogueFeaturePanel>(true);
             var inputBar = GetSerialized<CanvasGroup>(dialogue, "inputBarGroup");
-            Check("dialogue InputBar visible (alpha≈1)", inputBar != null && inputBar.alpha > 0.9f);
+            Check("dialogue InputBar group present (alpha≈1)", inputBar != null && inputBar.alpha > 0.9f);
             CheckAvatarRailHasNoBlackPlaceholders();
             CheckSceneFollowsLocation("boot");
         }
@@ -1379,6 +1396,13 @@ namespace Luoxia.App
 
         private void CheckDialogueInputAndPortrait()
         {
+            var dock = GameObject.Find("FeatureDock");
+            var dockCg = dock != null ? dock.GetComponent<CanvasGroup>() : null;
+            var dockRt = dock != null ? dock.GetComponent<RectTransform>() : null;
+            Check("FeatureDock expanded after avatar select",
+                dockCg != null && dockCg.blocksRaycasts &&
+                dockRt != null && Mathf.Abs(dockRt.anchoredPosition.y) < 8f);
+
             var dialogue = FindObjectOfType<DialogueFeaturePanel>(true);
             var input = GetSerialized<InputField>(dialogue, "inputField");
             var placeholder = GetSerialized<Text>(dialogue, "inputPlaceholder");
@@ -1386,6 +1410,10 @@ namespace Luoxia.App
             if (input != null)
             {
                 Check("inputField.interactable after avatar select", input.interactable);
+                Check("inputField fontSize=30",
+                    input.textComponent != null &&
+                    input.textComponent.fontSize == 30 &&
+                    !input.textComponent.resizeTextForBestFit);
             }
 
             if (placeholder != null)
@@ -1472,6 +1500,31 @@ namespace Luoxia.App
             Note($"avatar sprites={withSprite} bright={bright}");
         }
 
+        private void CheckOptimisticSendChrome()
+        {
+            var dialogue = FindObjectOfType<DialogueFeaturePanel>(true);
+            var turnContent = GetSerialized<Transform>(dialogue, "turnContent");
+            if (turnContent == null)
+            {
+                Check("optimistic send shows thinking placeholder", false);
+                return;
+            }
+
+            var foundThinking = false;
+            var texts = turnContent.GetComponentsInChildren<Text>(true);
+            for (var i = 0; i < texts.Length; i++)
+            {
+                var body = texts[i] != null ? texts[i].text ?? string.Empty : string.Empty;
+                if (body.Contains("正在思考中"))
+                {
+                    foundThinking = true;
+                    break;
+                }
+            }
+
+            Check("optimistic send shows thinking placeholder", foundThinking);
+        }
+
         private void SendDialogueLine()
         {
             FindObjectOfType<MainWorldScreen>()?.ActivateFeature(DialogueFeaturePanel.Id);
@@ -1509,27 +1562,25 @@ namespace Luoxia.App
             Note("drain: sent content-neutral dialogue probe");
         }
 
-        private void CheckEventPage()
+        private void CheckPendingCardsReveal()
         {
-            var pages = GameObject.Find("FeaturePagesContent");
-            var rt = pages != null ? pages.GetComponent<RectTransform>() : null;
-            var pageW = 0f;
-            if (rt != null && rt.childCount > 0)
-            {
-                var page = rt.GetChild(0) as RectTransform;
-                pageW = page != null ? page.sizeDelta.x : 0f;
-            }
-
-            Check(
-                "FeaturePagesContent slid to event by page width",
-                rt != null && pageW > 1f && Mathf.Abs(rt.anchoredPosition.x + pageW) < 8f);
+            var dock = GameObject.Find("FeatureDock");
+            var dockCg = dock != null ? dock.GetComponent<CanvasGroup>() : null;
+            var dockRt = dock != null ? dock.GetComponent<RectTransform>() : null;
+            Check("FeatureDock expanded after RevealPendingCards",
+                dockCg != null && dockCg.blocksRaycasts &&
+                dockRt != null && Mathf.Abs(dockRt.anchoredPosition.y) < 8f);
+            var pending = GameObject.Find("PendingCardsGroup");
+            Check("PendingCardsGroup active when cards available",
+                CountAvailableCards(GetLatestView()) == 0 ||
+                (pending != null && pending.activeInHierarchy));
             var dialogue = FindObjectOfType<DialogueFeaturePanel>(true);
             var inputBar = GetSerialized<CanvasGroup>(dialogue, "inputBarGroup");
-            Check("InputBar hidden on event page",
-                inputBar != null && inputBar.alpha < 0.05f && !inputBar.blocksRaycasts);
+            Check("InputBar remains visible with pending cards",
+                inputBar != null && inputBar.alpha > 0.9f);
             var screen = FindObjectOfType<MainWorldScreen>();
-            Check("ActiveFeatureId == event",
-                screen != null && screen.ActiveFeatureId == EventFeaturePanel.Id);
+            Check("ActiveFeatureId == dialogue after merge",
+                screen != null && screen.ActiveFeatureId == DialogueFeaturePanel.Id);
         }
 
         private bool TryOpenFirstEventConfirm()
@@ -1706,13 +1757,14 @@ namespace Luoxia.App
             }
 
             // Closed Chinese chrome only — reject raw schema English kinds.
+            // dialogue_quote must never appear (chat stream owns it).
             if (label == "narration" || label == "system" || label == "notice" ||
-                label == "dialogue_quote" || label == "narrative.show")
+                label == "dialogue_quote" || label == "对话" || label == "narrative.show")
             {
                 return false;
             }
 
-            return label == "旁白" || label == "系统" || label == "提示" || label == "对话";
+            return label == "旁白" || label == "系统" || label == "提示";
         }
 
         private static bool IsOverlayBlocking(SessionFatalOverlay overlay)
